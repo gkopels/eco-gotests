@@ -11,4 +11,9 @@ const (
 	LabelParallelDrainingTestCases = "paralleldraining"
 	// LabelQinQTestCases represents ExternallyManaged label that can be used for test cases selection.
 	LabelQinQTestCases = "qinq"
+	DpdkPort0Cmd       = `port stop 0
+tx_vlan set 0 100
+port start 0
+start
+`
 )
