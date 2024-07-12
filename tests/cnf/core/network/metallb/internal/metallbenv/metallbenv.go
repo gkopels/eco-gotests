@@ -117,6 +117,117 @@ func CreateNewMetalLbDaemonSetAndWaitUntilItsRunning(timeout time.Duration, node
 	return fmt.Errorf("metallb daemonSet is not ready")
 }
 
+func CreateNewMetalLbDaemonSetAndWaitUntilItsRunningWithAlwaysBlock(timeout time.Duration,
+	nodeLabel map[string]string, prefixes []string) error {
+	glog.V(90).Infof("Verifying if metalLb daemonset is running")
+
+	metalLbIo, err := metallb.Pull(APIClient, tsparams.MetalLbIo, NetConfig.MlbOperatorNamespace)
+
+	if err == nil {
+		glog.V(90).Infof("MetalLb daemonset is running. Removing daemonset.")
+
+		_, err = metalLbIo.Delete()
+
+		if err != nil {
+			return err
+		}
+	}
+
+	glog.V(90).Infof("Create new metalLb speaker's daemonSet.")
+
+	metalLbIo = metallb.NewBuilder(
+		APIClient, tsparams.MetalLbIo, NetConfig.MlbOperatorNamespace, nodeLabel)
+
+	metalLbIo.WithFRRconfigAlwaysBlock(prefixes)
+	_, err = metalLbIo.Create()
+
+	if err != nil {
+		return err
+	}
+
+	var metalLbDs *daemonset.Builder
+
+	err = wait.PollUntilContextTimeout(
+		context.TODO(), 3*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+			metalLbDs, err = daemonset.Pull(APIClient, tsparams.MetalLbDsName, NetConfig.MlbOperatorNamespace)
+			if err != nil {
+				glog.V(90).Infof("Error to pull daemonset %s namespace %s, retry",
+					tsparams.MetalLbDsName, NetConfig.MlbOperatorNamespace)
+
+				return false, nil
+			}
+
+			return true, nil
+		})
+
+	if err != nil {
+		return err
+	}
+
+	glog.V(90).Infof("Waiting until the new metalLb daemonset is in Ready state.")
+
+	if metalLbDs.IsReady(timeout) {
+		return nil
+	}
+
+	return fmt.Errorf("metallb daemonSet is not ready")
+}
+
+//func CreateNewMetalLbDaemonSetAndWaitUntilItsRunningWithAlwaysBlock(timeout time.Duration, nodeLabel map[string]string,
+//	prefixes []string) error {
+//	glog.V(90).Infof("Verifying if metalLb daemonset is running")
+//
+//	metalLbIo, err := metallb.Pull(APIClient, tsparams.MetalLbIo, NetConfig.MlbOperatorNamespace)
+//
+//	if err == nil {
+//		glog.V(90).Infof("MetalLb daemonset is running. Removing daemonset.")
+//
+//		_, err = metalLbIo.Delete()
+//
+//		if err != nil {
+//			return err
+//		}
+//	}
+//
+//	glog.V(90).Infof("Create new metalLb speaker's daemonSet.")
+//
+//	metalLbIo = metallb.NewBuilder(
+//		APIClient, tsparams.MetalLbIo, NetConfig.MlbOperatorNamespace, nodeLabel)
+//
+//	metalLbIo.WithFRRconfigAlwaysBlock(prefixes)
+//	_, err = metalLbIo.Create()
+//
+//	if err != nil {
+//		return err
+//	}
+//
+//	var metalLbDs *daemonset.Builder
+//	err = wait.PollUntilContextTimeout(
+//		context.TODO(), 3*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+//			metalLbDs, err = daemonset.Pull(APIClient, tsparams.MetalLbDsName, NetConfig.MlbOperatorNamespace)
+//			if err != nil {
+//				glog.V(90).Infof("Error to pull daemonset %s namespace %s, retry",
+//					tsparams.MetalLbDsName, NetConfig.MlbOperatorNamespace)
+//
+//				return false, nil
+//			}
+//
+//			return true, nil
+//		})
+//
+//	if err != nil {
+//		return err
+//	}
+//
+//	glog.V(90).Infof("Waiting until the new metalLb daemonset is in Ready state.")
+//
+//	if metalLbDs.IsReady(timeout) {
+//		return nil
+//	}
+//
+//	return fmt.Errorf("metallb daemonSet is not ready")
+//}
+
 // GetMetalLbIPByIPStack returns metalLb IP addresses  from env var typo:ECO_CNF_CORE_NET_MLB_ADDR_LIST
 // sorted by IPStack.
 func GetMetalLbIPByIPStack() ([]string, []string, error) {

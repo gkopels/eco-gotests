@@ -326,6 +326,32 @@ func (builder *Builder) WithSpeakerNodeSelector(label map[string]string) *Builde
 	return builder
 }
 
+// WithFRRconfigAlwaysBlock adds specific routes to block from being advertised to the FRR nodes.
+func (builder *Builder) WithFRRconfigAlwaysBlock(prefixes []string) *Builder {
+	if valid, _ := builder.validate(); !valid {
+		return builder
+	}
+
+	glog.V(100).Infof("Adding prefixes to block in the metallb.io object %s", builder.Definition.Name)
+
+	if len(prefixes) < 1 {
+		builder.errorMsg = "can not accept empty prefix list for the metallb alwaysBlock mode"
+	}
+
+	if builder.errorMsg != "" {
+		return builder
+	}
+
+	if builder.Definition.Spec.FRRK8SConfig == nil {
+		builder.Definition.Spec.FRRK8SConfig = &mlbtypes.FRRK8SConfig{}
+	}
+
+	builder.Definition.Spec.BGPBackend = "frr-k8s"
+	builder.Definition.Spec.FRRK8SConfig = &mlbtypes.FRRK8SConfig{AlwaysBlock: prefixes}
+
+	return builder
+}
+
 // WithOptions creates metallb with generic mutation options.
 func (builder *Builder) WithOptions(options ...AdditionalOptions) *Builder {
 	if valid, _ := builder.validate(); !valid {
@@ -396,7 +422,7 @@ func (builder *Builder) convertToStructured(unsObject *unstructured.Unstructured
 	err := runtime.DefaultUnstructuredConverter.FromUnstructured(unsObject.Object, metalLb)
 	if err != nil {
 		glog.V(100).Infof(
-			"Failed to convert from unstructured to MetalLb object in namespace %s",
+			"Failed to convert %s from unstructured to MetalLb object in namespace %s",
 			builder.Definition.Name, builder.Definition.Namespace)
 
 		return nil, err

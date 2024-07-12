@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	"net"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -102,24 +103,29 @@ func createExternalNad() {
 }
 
 func createBGPPeerAndVerifyIfItsReady(
-	peerIP, bfdProfileName string, remoteAsn uint32, eBgpMultiHop bool, speakerPods []*pod.Builder) {
+	peerIP, bfdProfileName string, remoteAsn uint32, eBgpMultiHop bool, frrPods []*pod.Builder) {
 	By("Creating BGP Peer")
 
-	bgpPeer := metallb.NewBPGPeerBuilder(APIClient, "testpeer", NetConfig.MlbOperatorNamespace,
+	bgpPeerName := "bgppeer-ipv4"
+	ip, n, err := net.ParseCIDR(peerIP)
+
+	fmt.Println("IP", ip, "NET", n)
+
+	bgpPeer := metallb.NewBPGPeerBuilder(APIClient, bgpPeerName, NetConfig.MlbOperatorNamespace,
 		peerIP, tsparams.LocalBGPASN, remoteAsn).WithPassword(tsparams.BGPPassword).WithEBGPMultiHop(eBgpMultiHop)
 
 	if bfdProfileName != "" {
 		bgpPeer.WithBFDProfile(bfdProfileName)
 	}
 
-	_, err := bgpPeer.Create()
+	_, err = bgpPeer.Create()
 	Expect(err).ToNot(HaveOccurred(), "Failed to create BGP peer")
 
 	By("Verifying if BGP protocol configured")
 
-	for _, speakerPod := range speakerPods {
+	for _, frrPod := range frrPods {
 		Eventually(frr.IsProtocolConfigured,
-			time.Minute, tsparams.DefaultRetryInterval).WithArguments(speakerPod, "router bgp").
+			time.Minute, tsparams.DefaultRetryInterval).WithArguments(frrPod, "router bgp").
 			Should(BeTrue(), "BGP is not configured on the Speakers")
 	}
 }

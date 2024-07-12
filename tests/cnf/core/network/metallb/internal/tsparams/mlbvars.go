@@ -42,6 +42,8 @@ var (
 	MetalLbDsName = "speaker"
 	// MetalLbDefaultSpeakerLabel represents the default metalLb speaker label.
 	MetalLbDefaultSpeakerLabel = "component=speaker"
+	// FRRK8SLabelSelector represents the default frr node label.
+	FRRK8SLabelSelector = "component=frr-k8s"
 	// ExternalMacVlanNADName represents default external NetworkAttachmentDefinition name.
 	ExternalMacVlanNADName = "external"
 	// SleepCMD represents shel sleep command.
