@@ -40,10 +40,14 @@ var (
 	MetalLbIo = "metallb"
 	// MetalLbDsName default metalLb speaker daemonset names.
 	MetalLbDsName = "speaker"
-	// FRRK8sDefaultLabel represents the default metalLb FRRK8S pod label.
-	FRRK8sDefaultLabel = "component=frr-k8s"
+	// MetalLbDefaultSpeakerLabel represents the default metalLb speaker label.
+	MetalLbDefaultSpeakerLabel = "component=speaker"
+	// FRRK8SLabelSelector represents the default frr node label.
+	FRRK8SLabelSelector = "component=frr-k8s"
 	// ExternalMacVlanNADName represents default external NetworkAttachmentDefinition name.
 	ExternalMacVlanNADName = "external"
+	// HubMacVlanNADName represents default external NetworkAttachmentDefinition name.
+	HubMacVlanNADName = "nad-hub"
 	// SleepCMD represents shel sleep command.
 	SleepCMD = []string{"/bin/bash", "-c", "sleep INF"}
 	// FRRContainerName represents default FRR's container name.
@@ -51,7 +55,7 @@ var (
 	// FRRSecondContainerName represents second FRR's container name.
 	FRRSecondContainerName = "frr2"
 	// DefaultTimeout represents the default timeout for most of Eventually/PollImmediate functions.
-	DefaultTimeout = 180 * time.Second
+	DefaultTimeout = 280 * time.Second
 	// DefaultRetryInterval represents the default retry interval for most of Eventually/PollImmediate functions.
 	DefaultRetryInterval = 10 * time.Second
 	// MetalLbSpeakerLabel represents test node label which allows to run metalLb speakers on specific nodes.

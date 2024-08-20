@@ -3,6 +3,7 @@ package nmstate
 import (
 	"context"
 	"fmt"
+	"net"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -314,6 +315,71 @@ func (builder *PolicyBuilder) WithVlanInterface(baseInterface string, vlanID uin
 		Vlan: Vlan{
 			BaseIface: baseInterface,
 			ID:        int(vlanID),
+		},
+	}
+
+	return builder.withInterface(newInterface)
+}
+
+// WithVlanInterfaceIP adds VLAN interface with IP configuration to the NodeNetworkConfigurationPolicy.
+func (builder *PolicyBuilder) WithVlanInterfaceIP(baseInterface string, vlanID uint16,
+	ipv4Addresses, ipv6Addresses string) *PolicyBuilder {
+	if valid, _ := builder.validate(); !valid {
+		return builder
+	}
+
+	glog.V(100).Infof("Creating NodeNetworkConfigurationPolicy %s with VLAN interface %s and vlanID %d",
+		builder.Definition.Name, baseInterface, vlanID)
+
+	if baseInterface == "" {
+		glog.V(100).Infof("The baseInterface can not be empty string")
+
+		builder.errorMsg = "nodenetworkconfigurationpolicy 'baseInterface' cannot be empty"
+	}
+
+	if vlanID > 4094 {
+		builder.errorMsg = "invalid vlanID, allowed vlanID values are between 0-4094"
+	}
+
+	if net.ParseIP(ipv4Addresses) == nil {
+		glog.V(100).Infof("the vlanInterface contains an invalid ipv4 address")
+
+		builder.errorMsg = "vlanInterfaceIP 'ipv4Addresses' is an invalid ipv4 address"
+	}
+
+	if net.ParseIP(ipv6Addresses) == nil {
+		glog.V(100).Infof("the vlanInterface contains an invalid ipv6 address")
+
+		builder.errorMsg = "vlanInterfaceIP 'ipv6Addresses' is an invalid ipv6 address"
+	}
+
+	if builder.errorMsg != "" {
+		return builder
+	}
+
+	newInterface := NetworkInterface{
+		Name:  fmt.Sprintf("%s.%d", baseInterface, vlanID),
+		Type:  "vlan",
+		State: "up",
+		Vlan: Vlan{
+			BaseIface: baseInterface,
+			ID:        int(vlanID),
+		},
+		Ipv4: InterfaceIpv4{
+			Enabled: true,
+			Dhcp:    false,
+			Address: []InterfaceIPAddress{{
+				PrefixLen: 24,
+				IP:        net.ParseIP(ipv4Addresses),
+			}},
+		},
+		Ipv6: InterfaceIpv6{
+			Enabled: true,
+			Dhcp:    false,
+			Address: []InterfaceIPAddress{{
+				PrefixLen: 64,
+				IP:        net.ParseIP(ipv6Addresses),
+			}},
 		},
 	}
 

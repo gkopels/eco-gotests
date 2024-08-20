@@ -90,12 +90,46 @@ func createConfigMap(
 	return masterConfigMap
 }
 
-func createExternalNad() {
+func createConfigMapWithStaticRoutes(
+	bgpAsn int, nodeAddrList []string, enableMultiHop, enableBFD bool) *configmap.Builder {
+	frrBFDConfig := frr.DefineBGPConfigWitgStaticRoutes(
+		bgpAsn, tsparams.LocalBGPASN, removePrefixFromIPList(nodeAddrList), enableMultiHop, enableBFD)
+	configMapData := frr.DefineBaseConfig(tsparams.DaemonsFile, frrBFDConfig, "")
+	masterConfigMap, err := configmap.NewBuilder(APIClient, "frr-master-node-config", tsparams.TestNamespaceName).
+		WithData(configMapData).Create()
+	Expect(err).ToNot(HaveOccurred(), "Failed to create config map")
+
+	return masterConfigMap
+}
+
+func createHubConfigMap(name string) *configmap.Builder {
+	frrBFDConfig := frr.DefineBGPConfig(
+		64500, tsparams.LocalBGPASN, []string{"10.10.0.10"}, false, false)
+	configMapData := frr.DefineBaseConfig(tsparams.DaemonsFile, frrBFDConfig, "")
+	hubConfigMap, err := configmap.NewBuilder(APIClient, name, tsparams.TestNamespaceName).WithData(configMapData).Create()
+	Expect(err).ToNot(HaveOccurred(), "Failed to create hub config map")
+
+	return hubConfigMap
+}
+
+func createConfigMapWithAdvertisedRoutes(
+	bgpAsn int, nodeAddrList []string, enableMultiHop, enableBFD bool) *configmap.Builder {
+	frrBFDConfig := frr.DefineBGPConfig(
+		bgpAsn, tsparams.LocalBGPASN, removePrefixFromIPList(nodeAddrList), enableMultiHop, enableBFD)
+	configMapData := frr.DefineBaseConfig(tsparams.DaemonsFile, frrBFDConfig, "")
+	masterConfigMap, err := configmap.NewBuilder(APIClient, "frr-master-node-config", tsparams.TestNamespaceName).
+		WithData(configMapData).Create()
+	Expect(err).ToNot(HaveOccurred(), "Failed to create config map")
+
+	return masterConfigMap
+}
+
+func createExternalNad(name string) {
 	By("Creating external BR-EX NetworkAttachmentDefinition")
 
 	macVlanPlugin, err := define.MasterNadPlugin(coreparams.OvnExternalBridge, "bridge", nad.IPAMStatic())
 	Expect(err).ToNot(HaveOccurred(), "Failed to define master nad plugin")
-	externalNad, err = nad.NewBuilder(APIClient, tsparams.ExternalMacVlanNADName, tsparams.TestNamespaceName).
+	externalNad, err = nad.NewBuilder(APIClient, name, tsparams.TestNamespaceName).
 		WithMasterPlugin(macVlanPlugin).Create()
 	Expect(err).ToNot(HaveOccurred(), "Failed to create external NetworkAttachmentDefinition")
 	Expect(externalNad.Exists()).To(BeTrue(), "Failed to detect external NetworkAttachmentDefinition")
@@ -161,6 +195,7 @@ func setupL2Advertisement(addressPool []string) *metallb.IPAddressPoolBuilder {
 
 func verifyMetalLbBGPSessionsAreUPOnFrrPod(frrPod *pod.Builder, peerAddrList []string) {
 	for _, peerAddress := range removePrefixFromIPList(peerAddrList) {
+		fmt.Println(peerAddress)
 		Eventually(frr.BGPNeighborshipHasState,
 			time.Minute*3, tsparams.DefaultRetryInterval).
 			WithArguments(frrPod, peerAddress, "Established").Should(
@@ -201,6 +236,44 @@ func createFrrPod(
 	By("Creating FRR pod in the test namespace")
 
 	frrPod, err := frrPod.WithPrivilegedFlag().CreateAndWaitUntilRunning(time.Minute)
+	Expect(err).ToNot(HaveOccurred(), "Failed to create FRR test pod")
+
+	return frrPod
+}
+
+func createFrrHubPod(
+	name string,
+	nodeName string,
+	configmapName string,
+	defaultCMD []string,
+	secondaryNetConfig []*types.NetworkSelectionElement,
+	podName ...string) *pod.Builder {
+
+	if len(podName) > 0 {
+		name = podName[0]
+	}
+
+	frrPod := pod.NewBuilder(APIClient, name, tsparams.TestNamespaceName, NetConfig.FrrImage).
+		DefineOnNode(nodeName).
+		WithTolerationToMaster().
+		WithSecondaryNetwork(secondaryNetConfig).
+		RedefineDefaultCMD(defaultCMD)
+
+	By("Creating FRR container")
+
+	if configmapName != "" {
+		frrContainer := pod.NewContainerBuilder(
+			tsparams.FRRSecondContainerName, NetConfig.CnfNetTestContainer, tsparams.SleepCMD).
+			WithSecurityCapabilities([]string{"NET_ADMIN", "NET_RAW", "SYS_ADMIN"}, true)
+
+		frrCtr, err := frrContainer.GetContainerCfg()
+		Expect(err).ToNot(HaveOccurred(), "Failed to get container configuration")
+		frrPod.WithAdditionalContainer(frrCtr).WithLocalVolume(configmapName, "/etc/frr")
+	}
+
+	By("Creating FRR pod in the test namespace")
+
+	frrPod, err := frrPod.WithPrivilegedFlag().CreateAndWaitUntilRunning(5 * time.Minute)
 	Expect(err).ToNot(HaveOccurred(), "Failed to create FRR test pod")
 
 	return frrPod

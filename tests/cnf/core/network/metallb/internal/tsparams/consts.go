@@ -7,7 +7,10 @@ const (
 	LabelBFDTestCases = "bfd"
 	// LabelBGPTestCases represents bgp label that can be used for test cases selection.
 	LabelBGPTestCases = "bgp"
+	// LabelFRRTestCases represents frr label that can be used for test cases selection.
+	LabelFRRTestCases = "frr"
 	// LabelLayer2TestCases represents layer2 label that can be used for test cases selection.
+	FRRK8sDefaultLabel
 	LabelLayer2TestCases = "layer2"
 	// BGPPassword var is used to set password for BGP session between FRR speakers.
 	BGPPassword = "bgp-test"
