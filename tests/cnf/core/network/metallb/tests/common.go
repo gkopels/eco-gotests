@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -124,6 +125,31 @@ func createBGPPeerAndVerifyIfItsReady(
 	}
 }
 
+func createBGPPeerWithConnectTimeAndVerifyIfItsReady(connectTime metav1.Duration,
+	peerIP, bfdProfileName string, remoteAsn uint32, eBgpMultiHop bool, frrk8sPods []*pod.Builder) {
+	By("Creating BGP Peer")
+
+	bgpPeer := metallb.NewBPGPeerBuilder(APIClient, "testpeer", NetConfig.MlbOperatorNamespace,
+		peerIP, tsparams.LocalBGPASN, remoteAsn).WithPassword(tsparams.BGPPassword).WithEBGPMultiHop(eBgpMultiHop)
+
+	bgpPeer.WithConnectTimer(connectTime)
+
+	if bfdProfileName != "" {
+		bgpPeer.WithBFDProfile(bfdProfileName)
+	}
+
+	_, err := bgpPeer.Create()
+	Expect(err).ToNot(HaveOccurred(), "Failed to create BGP peer")
+
+	By("Verifying if BGP protocol configured")
+
+	for _, frrk8sPod := range frrk8sPods {
+		Eventually(frr.IsProtocolConfigured,
+			time.Minute, tsparams.DefaultRetryInterval).WithArguments(frrk8sPod, "router bgp").
+			Should(BeTrue(), "BGP is not configured on the Speakers")
+	}
+}
+
 func setupBgpAdvertisement(addressPool []string, prefixLen int32) *metallb.IPAddressPoolBuilder {
 	ipAddressPool, err := metallb.NewIPAddressPoolBuilder(
 		APIClient,
@@ -163,6 +189,15 @@ func verifyMetalLbBGPSessionsAreUPOnFrrPod(frrPod *pod.Builder, peerAddrList []s
 	for _, peerAddress := range removePrefixFromIPList(peerAddrList) {
 		Eventually(frr.BGPNeighborshipHasState,
 			time.Minute*3, tsparams.DefaultRetryInterval).
+			WithArguments(frrPod, peerAddress, "Established").Should(
+			BeTrue(), "Failed to receive BGP status UP")
+	}
+}
+
+func verifyMetalLbBGPSessionsAreUPOnFrrNode10Seconds(frrPod *pod.Builder, peerAddrList []string) {
+	for _, peerAddress := range removePrefixFromIPList(peerAddrList) {
+		Eventually(frr.BGPNeighborshipHasState,
+			time.Second*10, time.Second).
 			WithArguments(frrPod, peerAddress, "Established").Should(
 			BeTrue(), "Failed to receive BGP status UP")
 	}
