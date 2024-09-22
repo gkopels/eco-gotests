@@ -106,7 +106,7 @@ var _ = Describe("QinQ", Ordered, Label(tsparams.LabelQinQTestCases), ContinueOn
 			metav1.ListOptions{LabelSelector: labels.Set(NetConfig.WorkerLabelMap).String()})
 		Expect(err).ToNot(HaveOccurred(), "Fail to discover worker nodes")
 
-		Expect(sriovenv.ValidateSriovInterfaces(workerNodeList, 2)).ToNot(HaveOccurred(),
+		Expect(netenv.ValidateSriovInterfaces(workerNodeList, 2)).ToNot(HaveOccurred(),
 			"Failed to get required SR-IOV interfaces")
 
 		By("Collecting SR-IOV interfaces for qinq testing")

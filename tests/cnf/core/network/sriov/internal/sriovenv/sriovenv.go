@@ -12,7 +12,6 @@ import (
 	"github.com/openshift-kni/eco-goinfra/pkg/pod"
 	"github.com/openshift-kni/eco-goinfra/pkg/sriov"
 
-	sriovV1 "github.com/k8snetworkplumbingwg/sriov-network-operator/api/v1"
 	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/internal/cmd"
 	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/internal/netenv"
 	. "github.com/openshift-kni/eco-gotests/tests/cnf/core/network/internal/netinittools"
@@ -23,35 +22,35 @@ import (
 )
 
 // ValidateSriovInterfaces checks that provided interfaces by env var exist on the nodes.
-func ValidateSriovInterfaces(workerNodeList []*nodes.Builder, requestedNumber int) error {
-	var validSriovIntefaceList []sriovV1.InterfaceExt
-
-	availableUpSriovInterfaces, err := sriov.NewNetworkNodeStateBuilder(APIClient,
-		workerNodeList[0].Definition.Name, NetConfig.SriovOperatorNamespace).GetUpNICs()
-
-	if err != nil {
-		return fmt.Errorf("failed get SR-IOV devices from the node %s", workerNodeList[0].Definition.Name)
-	}
-
-	requestedSriovInterfaceList, err := NetConfig.GetSriovInterfaces(requestedNumber)
-	if err != nil {
-		return err
-	}
-
-	for _, availableUpSriovInterface := range availableUpSriovInterfaces {
-		for _, requestedSriovInterface := range requestedSriovInterfaceList {
-			if availableUpSriovInterface.Name == requestedSriovInterface {
-				validSriovIntefaceList = append(validSriovIntefaceList, availableUpSriovInterface)
-			}
-		}
-	}
-
-	if len(validSriovIntefaceList) < requestedNumber {
-		return fmt.Errorf("requested interfaces %v are not present on the cluster node", requestedSriovInterfaceList)
-	}
-
-	return nil
-}
+//func ValidateSriovInterfaces(workerNodeList []*nodes.Builder, requestedNumber int) error {
+//	var validSriovIntefaceList []sriovV1.InterfaceExt
+//
+//	availableUpSriovInterfaces, err := sriov.NewNetworkNodeStateBuilder(APIClient,
+//		workerNodeList[0].Definition.Name, NetConfig.SriovOperatorNamespace).GetUpNICs()
+//
+//	if err != nil {
+//		return fmt.Errorf("failed get SR-IOV devices from the node %s", workerNodeList[0].Definition.Name)
+//	}
+//
+//	requestedSriovInterfaceList, err := NetConfig.GetSriovInterfaces(requestedNumber)
+//	if err != nil {
+//		return err
+//	}
+//
+//	for _, availableUpSriovInterface := range availableUpSriovInterfaces {
+//		for _, requestedSriovInterface := range requestedSriovInterfaceList {
+//			if availableUpSriovInterface.Name == requestedSriovInterface {
+//				validSriovIntefaceList = append(validSriovIntefaceList, availableUpSriovInterface)
+//			}
+//		}
+//	}
+//
+//	if len(validSriovIntefaceList) < requestedNumber {
+//		return fmt.Errorf("requested interfaces %v are not present on the cluster node", requestedSriovInterfaceList)
+//	}
+//
+//	return nil
+//}
 
 // CreateSriovPolicyAndWaitUntilItsApplied creates SriovNetworkNodePolicy and waits until
 // it's successfully applied.

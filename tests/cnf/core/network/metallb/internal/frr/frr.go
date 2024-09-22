@@ -45,6 +45,50 @@ type (
 			Bestpath bool `json:"bestpath,omitempty"`
 		} `json:"routes"`
 	}
+
+	advertisedRoute struct {
+		AddrPrefix    string `json:"addrPrefix"`
+		PrefixLen     int    `json:"prefixLen"`
+		Network       string `json:"network"`
+		NextHop       string `json:"nextHop"`
+		Metric        int    `json:"metric"`
+		LocPrf        int    `json:"locPrf"`
+		Weight        int    `json:"weight"`
+		Path          string `json:"path"`
+		BGPOriginCode string `json:"bgpOriginCode"`
+	}
+	// BgpAdvertisedRoutes creates struct from json output.
+	BgpAdvertisedRoutes struct {
+		BGPTableVersion  int                        `json:"bgpTableVersion"`
+		BGPLocalRouterID string                     `json:"bgpLocalRouterId"`
+		DefaultLocPrf    int                        `json:"defaultLocPrf"`
+		LocalAS          int                        `json:"localAS"`
+		AdvertisedRoutes map[string]advertisedRoute `json:"advertisedRoutes"`
+	}
+	// BgpReceivedRoutes struct includes Routes map.
+	BgpReceivedRoutes struct {
+		Routes map[string][]RouteInfo `json:"routes"`
+	}
+	// RouteInfo struct includes route info.
+	RouteInfo struct {
+		Prefix    string    `json:"prefix"`
+		PrefixLen int       `json:"prefixLen"`
+		Protocol  string    `json:"protocol"`
+		Metric    int       `json:"metric"`
+		Uptime    string    `json:"uptime"`
+		Nexthops  []Nexthop `json:"nexthops"`
+	}
+	// Nexthop struct includes nexthop route info.
+	Nexthop struct {
+		Flags          int    `json:"flags"`
+		Fib            bool   `json:"fib"`
+		IP             string `json:"ip"`
+		Afi            string `json:"afi"`
+		InterfaceIndex int    `json:"interfaceIndex"`
+		InterfaceName  string `json:"interfaceName"`
+		Active         bool   `json:"active"`
+		Weight         int    `json:"weight"`
+	}
 )
 
 // DefineBaseConfig defines minimal required FRR configuration.
@@ -87,6 +131,53 @@ func DefineBGPConfig(localBGPASN, remoteBGPASN int, neighborsIPAddresses []strin
 	}
 
 	bgpConfig += "exit-address-family\n!\nline vty\n!\nend\n"
+
+	return bgpConfig
+}
+
+// DefineBGPConfigWithStaticRouteAndNetwork defines BGP config file with static route and network.
+func DefineBGPConfigWithStaticRouteAndNetwork(localBGPASN, remoteBGPASN int, hubPodIPs,
+	advertisedIPv4Routes, advertisedIPv6Routes, neighborsIPAddresses []string,
+	multiHop, bfd bool) string {
+	bgpConfig := tsparams.FRRBaseConfig +
+		fmt.Sprintf("ip route %s/32 %s\n", neighborsIPAddresses[1], hubPodIPs[0]) +
+		fmt.Sprintf("ip route %s/32 %s\n!\n", neighborsIPAddresses[0], hubPodIPs[1]) +
+		fmt.Sprintf("router bgp %d\n", localBGPASN) +
+		tsparams.FRRDefaultBGPPreConfig
+
+	for _, ipAddress := range neighborsIPAddresses {
+		bgpConfig += fmt.Sprintf("  neighbor %s remote-as %d\n  neighbor %s password %s\n",
+			ipAddress, remoteBGPASN, ipAddress, tsparams.BGPPassword)
+
+		if bfd {
+			bgpConfig += fmt.Sprintf("  neighbor %s bfd\n", ipAddress)
+		}
+
+		if multiHop {
+			bgpConfig += fmt.Sprintf("  neighbor %s ebgp-multihop 2\n", ipAddress)
+		}
+	}
+
+	bgpConfig += "!\naddress-family ipv4 unicast\n"
+	for _, ipAddress := range neighborsIPAddresses {
+		bgpConfig += fmt.Sprintf("  neighbor %s activate\n", ipAddress)
+	}
+
+	bgpConfig += fmt.Sprintf("  network %s\n", advertisedIPv4Routes[0])
+	bgpConfig += fmt.Sprintf("  network %s\n", advertisedIPv4Routes[1])
+	bgpConfig += "exit-address-family\n"
+
+	// Add network commands only once for IPv6
+	bgpConfig += "!\naddress-family ipv6 unicast\n"
+	for _, ipAddress := range neighborsIPAddresses {
+		bgpConfig += fmt.Sprintf("  neighbor %s activate\n", ipAddress)
+	}
+
+	bgpConfig += fmt.Sprintf("  network %s\n", advertisedIPv6Routes[0])
+	bgpConfig += fmt.Sprintf("  network %s\n", advertisedIPv6Routes[1])
+	bgpConfig += "exit-address-family\n"
+
+	bgpConfig += "!\nline vty\n!\nend\n"
 
 	return bgpConfig
 }
@@ -176,6 +267,22 @@ func SetStaticRoute(frrPod *pod.Builder, action, destIP string, nextHopMap map[s
 	return buffer.String(), nil
 }
 
+func VerifyInterface(frrPod *pod.Builder, interfaceName string) (string, error) {
+	buffer, err := frrPod.ExecCommand(
+		[]string{"ip address show", interfaceName}, "frr")
+	if err != nil {
+		if strings.Contains(buffer.String(), "File exists") {
+			glog.V(90).Infof("Warning: Address already exist")
+
+			return buffer.String(), nil
+		}
+
+		return buffer.String(), err
+	}
+
+	return buffer.String(), nil
+}
+
 // GetBGPStatus returns bgp status output from frr pod.
 func GetBGPStatus(frrPod *pod.Builder, protocolVersion string, containerName ...string) (*bgpStatus, error) {
 	glog.V(90).Infof("Getting bgp status from pod: %s", frrPod.Definition.Name)
@@ -229,4 +336,109 @@ func runningConfig(frrPod *pod.Builder) (string, error) {
 	}
 
 	return bgpStateOut.String(), nil
+}
+
+// GetBGPAdvertisedRoutes retrieves the routes advertised from the external frr pod to the frr nodes.
+func GetBGPAdvertisedRoutes(frrPod *pod.Builder, nodeIPs []string) (string, error) {
+	var allRoutes strings.Builder
+
+	// Loop through each nodeIP and execute the command
+	for _, nodeIP := range nodeIPs {
+		// Execute the BGP command for each nodeIP
+		routes, err := frrPod.ExecCommand(append(netparam.VtySh,
+			fmt.Sprintf("sh ip bgp neighbors %s advertised-routes json", nodeIP)))
+		if err != nil {
+			return "", fmt.Errorf("error collecting BGP advertised routes from pod %s for nodeIP %s: %w",
+				frrPod.Definition.Name, nodeIP, err)
+		}
+
+		// Parse the BGP advertised routes for each nodeIP
+		bgpAdvertised, err := parseBGPAdvertisedRoutes(routes.String())
+		if err != nil {
+			return "", fmt.Errorf("error parsing BGP advertised routes for nodeIP %s: %w", nodeIP, err)
+		}
+
+		// Store the result for the current nodeIP
+		allRoutes.WriteString(fmt.Sprintf("Node IP: %s\n", nodeIP))
+		allRoutes.WriteString(bgpAdvertised)
+		allRoutes.WriteString("\n")
+	}
+
+	// Return all results combined
+	return allRoutes.String(), nil
+}
+
+// VerifyBGPReceivedRoutesOnFrrNodes verifies routes were received via BGP on Frr nodes.
+func VerifyBGPReceivedRoutesOnFrrNodes(frrk8sPods []*pod.Builder) (string, error) {
+	var result strings.Builder
+
+	for _, frrk8sPod := range frrk8sPods {
+		// Run the "sh ip route bgp json" command on each pod
+		output, err := frrk8sPod.ExecCommand(append(netparam.VtySh, "sh ip route bgp json"), "frr")
+		if err != nil {
+			return "", fmt.Errorf("error collecting BGP received routes from pod %s: %w",
+				frrk8sPod.Definition.Name, err)
+		}
+
+		// Parse the JSON output to get the BGP routes
+		bgpRoutes, err := parseBGPReceivedRoutes(output.String())
+
+		if err != nil {
+			return "", fmt.Errorf("error parsing BGP JSON from pod %s: %w", frrk8sPod.Definition.Name, err)
+		}
+
+		// Write the pod name to the result
+		result.WriteString(fmt.Sprintf("Pod: %s\n", frrk8sPod.Definition.Name))
+
+		// Extract and write the prefixes (keys of the Routes map) and corresponding route info
+		for prefix, routeInfos := range bgpRoutes.Routes {
+			result.WriteString(fmt.Sprintf("  Prefix: %s\n", prefix))
+
+			for _, routeInfo := range routeInfos {
+				result.WriteString(fmt.Sprintf("    Route Info: Prefix: %s", routeInfo.Prefix))
+			}
+		}
+
+		result.WriteString("\n") // Add an empty line between pods
+	}
+
+	return result.String(), nil
+}
+
+func parseBGPReceivedRoutes(jsonData string) (*BgpReceivedRoutes, error) {
+	var bgpRoutes map[string][]RouteInfo // This matches the structure of your JSON
+
+	// Parse the JSON data into the struct
+	err := json.Unmarshal([]byte(jsonData), &bgpRoutes)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing BGP received routes: %w", err)
+	}
+
+	// Create a new BgpReceivedRoutes struct and populate it with the parsed data
+	parsedRoutes := &BgpReceivedRoutes{
+		Routes: bgpRoutes, // The map directly holds prefixes as keys
+	}
+
+	// Print the parsed routes for debugging
+	fmt.Printf("Parsed Routes: %+v\n", bgpRoutes)
+
+	return parsedRoutes, nil
+}
+
+func parseBGPAdvertisedRoutes(jsonData string) (string, error) {
+	var bgpRoutes BgpAdvertisedRoutes
+
+	// Parse the JSON data into the struct
+	err := json.Unmarshal([]byte(jsonData), &bgpRoutes)
+	if err != nil {
+		return "", fmt.Errorf("error parsing BGP advertised routes: %w", err)
+	}
+
+	// Format only the network values as a string
+	var result strings.Builder
+	for _, route := range bgpRoutes.AdvertisedRoutes {
+		result.WriteString(fmt.Sprintf("%s\n", route.Network))
+	}
+
+	return result.String(), nil
 }

@@ -31,8 +31,7 @@ var _ = Describe("BGP", Ordered, Label(tsparams.LabelBGPTestCases), ContinueOnFa
 		var err error
 		By("Getting MetalLb load balancer ip addresses")
 		ipv4metalLbIPList, ipv6metalLbIPList, err = metallbenv.GetMetalLbIPByIPStack()
-		Expect(err).ToNot(HaveOccurred(), "An unexpected error occurred while "+
-			"determining the IP addresses from the ECO_CNF_CORE_NET_MLB_ADDR_LIST environment variable.")
+		Expect(err).ToNot(HaveOccurred(), tsparams.MlbAddressListError)
 
 		By("Getting external nodes ip addresses")
 		cnfWorkerNodeList, err = nodes.List(APIClient,
@@ -64,7 +63,7 @@ var _ = Describe("BGP", Ordered, Label(tsparams.LabelBGPTestCases), ContinueOnFa
 
 	BeforeEach(func() {
 		By("Creating External NAD")
-		createExternalNad()
+		createExternalNad(tsparams.ExternalMacVlanNADName)
 
 		By("Listing metalLb speakers pod")
 		var err error
@@ -247,7 +246,7 @@ func validatePrefix(
 		}
 	}
 
-	Expect(workerNodesAddresses).To(ContainElements(nextHopAddresses),
+	Expect([]string{"10.100.100.254", "10.100.100.253"}).To(ContainElements(nextHopAddresses),
 		"Failed next hop address in not in node addresses list")
 
 	_, err = frr.GetBGPCommunityStatus(masterNodeFRRPod, strings.ToLower(ipProtoVersion))

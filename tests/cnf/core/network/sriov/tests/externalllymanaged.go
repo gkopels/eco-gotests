@@ -57,7 +57,7 @@ var _ = Describe("ExternallyManaged", Ordered, Label(tsparams.LabelExternallyMan
 					metav1.ListOptions{LabelSelector: labels.Set(NetConfig.WorkerLabelMap).String()})
 				Expect(err).ToNot(HaveOccurred(), "Failed to discover worker nodes")
 
-				Expect(sriovenv.ValidateSriovInterfaces(workerNodeList, 2)).ToNot(HaveOccurred(),
+				Expect(netenv.ValidateSriovInterfaces(workerNodeList, 2)).ToNot(HaveOccurred(),
 					"Failed to get required SR-IOV interfaces")
 				sriovInterfacesUnderTest, err = NetConfig.GetSriovInterfaces(2)
 				Expect(err).ToNot(HaveOccurred(), "Failed to retrieve SR-IOV interfaces for testing")
