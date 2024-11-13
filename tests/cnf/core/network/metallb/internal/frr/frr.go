@@ -389,6 +389,7 @@ func VerifyBGPReceivedRoutesOnFrrNodes(frrk8sPods []*pod.Builder) (string, error
 	for _, frrk8sPod := range frrk8sPods {
 		// Run the "sh ip route bgp json" command on each pod
 		output, err := frrk8sPod.ExecCommand(append(netparam.VtySh, "sh ip route bgp json"), "frr")
+		print("OUTPUT", output.String())
 		if err != nil {
 			return "", fmt.Errorf("error collecting BGP received routes from pod %s: %w",
 				frrk8sPod.Definition.Name, err)
