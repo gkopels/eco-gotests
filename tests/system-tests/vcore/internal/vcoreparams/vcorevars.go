@@ -27,13 +27,13 @@ var (
 	PossibleWorkerNodeRoles = []string{"odf", "control-plane-worker", "user-plane-worker"}
 
 	// CpMCSelector the control-plane-worker nodes selector value.
-	CpMCSelector = "machineconfiguration.openshift.io/role: control-plane-worker"
+	CpMCSelector = "machineconfiguration_remove.openshift.io/role: control-plane-worker"
 
 	// PpMCSelectorKey the user-plane-worker mc selector key.
-	PpMCSelectorKey = "machineconfiguration.openshift.io/role: user-plane-worker"
+	PpMCSelectorKey = "machineconfiguration_remove.openshift.io/role: user-plane-worker"
 
 	// OdfMCSelector the odf nodes selector value.
-	OdfMCSelector = map[string]string{"machineconfiguration.openshift.io/role": "odf"}
+	OdfMCSelector = map[string]string{"machineconfiguration_remove.openshift.io/role": "odf"}
 
 	// CpNodesSelector the cp nodes selector value.
 	CpNodesSelector = map[string]string{"node-role.kubernetes.io/control-plane-worker": ""}

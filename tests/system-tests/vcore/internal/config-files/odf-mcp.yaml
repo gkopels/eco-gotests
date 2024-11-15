@@ -1,11 +1,11 @@
-apiVersion: machineconfiguration.openshift.io/v1
+apiVersion: machineconfiguration_remove.openshift.io/v1
 kind: MachineConfigPool
 metadata:
   name: '{{ .MCPName }}'
 spec:
   machineConfigSelector:
     matchExpressions:
-      - {key: machineconfiguration.openshift.io/role, operator: In, values: [worker,odf]}
+      - {key: machineconfiguration_remove.openshift.io/role, operator: In, values: [worker,odf]}
   nodeSelector:
     matchExpressions:
       - key: node-role.kubernetes.io/infra

@@ -66,7 +66,7 @@ require (
 	github.com/PaesslerAG/jsonpath v0.1.1 // indirect
 	github.com/ajeddeloh/go-json v0.0.0-20200220154158-5ae607161559 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
-	github.com/aws/aws-sdk-go v1.53.5 // indirect
+	github.com/aws/aws-sdk-go v1.55.5 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
@@ -83,7 +83,7 @@ require (
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/coreos/ign-converter v0.0.0-20230417193809-cee89ea7d8ff // indirect
 	github.com/coreos/ignition v0.35.0 // indirect
-	github.com/coreos/ignition/v2 v2.19.0
+	github.com/coreos/ignition/v2 v2.20.0
 	github.com/coreos/vcontext v0.0.0-20231102161604-685dc7299dc5 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.12.1 // indirect
@@ -192,13 +192,13 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
-	golang.org/x/crypto v0.26.0
-	golang.org/x/net v0.28.0 // indirect
-	golang.org/x/oauth2 v0.21.0 // indirect
+	golang.org/x/crypto v0.28.0
+	golang.org/x/net v0.30.0 // indirect
+	golang.org/x/oauth2 v0.23.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/sys v0.24.0 // indirect
-	golang.org/x/term v0.23.0 // indirect
-	golang.org/x/text v0.17.0 // indirect
+	golang.org/x/sys v0.26.0 // indirect
+	golang.org/x/term v0.25.0 // indirect
+	golang.org/x/text v0.19.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/tools v0.24.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
@@ -229,6 +229,8 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
+
+require github.com/coreos/butane v0.23.0
 
 replace (
 	github.com/imdario/mergo => github.com/imdario/mergo v0.3.16

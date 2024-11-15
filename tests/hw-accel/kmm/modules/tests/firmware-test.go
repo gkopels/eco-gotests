@@ -34,7 +34,7 @@ var _ = Describe("KMM", Ordered, Label(kmmparams.LabelSuite, kmmparams.LabelLong
 		image := fmt.Sprintf("%s/%s/%s:$KERNEL_FULL_VERSION",
 			tsparams.LocalImageRegistry, kmmparams.FirmwareTestNamespace, kmodName)
 		machineConfigName := "99-worker-kernel-args-firmware-path"
-		machineConfigRole := "machineconfiguration.openshift.io/role"
+		machineConfigRole := "machineconfiguration_remove.openshift.io/role"
 		workerKernelArgs := []string{"firmware_class.path=/var/lib/firmware"}
 
 		BeforeAll(func() {
@@ -124,7 +124,7 @@ var _ = Describe("KMM", Ordered, Label(kmmparams.LabelSuite, kmmparams.LabelLong
 				Expect(err).ToNot(HaveOccurred(), "error while pulling machineconfigpool")
 
 				err = mcp.WaitToBeStableFor(time.Minute, 2*time.Minute)
-				Expect(err).To(HaveOccurred(), "the machineconfiguration did not trigger a mcp update")
+				Expect(err).To(HaveOccurred(), "the machineconfiguration_remove did not trigger a mcp update")
 
 				err = mcp.WaitForUpdate(30 * time.Minute)
 				Expect(err).ToNot(HaveOccurred(), "error while waiting machineconfigpool to get updated")

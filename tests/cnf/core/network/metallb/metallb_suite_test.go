@@ -50,7 +50,7 @@ var _ = BeforeSuite(func() {
 
 	if err != nil {
 		Skip(
-			fmt.Sprintf("given cluster is not suitable for MetalLb tests due to the following error %s", err.Error()))
+			fmt.Sprintf("given cluster is not suitable for nftables tests due to the following error %s", err.Error()))
 	}
 
 	By("Pulling test images on cluster before running test cases")
