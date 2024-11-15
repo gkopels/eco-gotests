@@ -323,7 +323,7 @@ func HasFIPS(ctx context.Context, client runtimeclient.Client) (bool, error) {
 	}
 	node := nodes.Items[0]
 
-	currentConfig := node.Annotations["machineconfiguration.openshift.io/currentConfig"]
+	currentConfig := node.Annotations["machineconfiguration_remove.openshift.io/currentConfig"]
 	if currentConfig == "" {
 		return false, fmt.Errorf("failed to get currentConfig annotation")
 	}

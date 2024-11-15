@@ -550,6 +550,7 @@ github.com/openshift-kni/eco-goinfra/pkg/kmm
 github.com/openshift-kni/eco-goinfra/pkg/lca
 github.com/openshift-kni/eco-goinfra/pkg/lso
 github.com/openshift-kni/eco-goinfra/pkg/machine
+github.com/openshift-kni/eco-goinfra/pkg/machineconfiguration
 github.com/openshift-kni/eco-goinfra/pkg/mco
 github.com/openshift-kni/eco-goinfra/pkg/metallb
 github.com/openshift-kni/eco-goinfra/pkg/monitoring
@@ -628,6 +629,7 @@ github.com/openshift-kni/eco-goinfra/pkg/schemes/imagebasedinstall/hive/api/v1/o
 github.com/openshift-kni/eco-goinfra/pkg/schemes/imagebasedinstall/hive/api/v1/ovirt
 github.com/openshift-kni/eco-goinfra/pkg/schemes/imagebasedinstall/hive/api/v1/vsphere
 github.com/openshift-kni/eco-goinfra/pkg/schemes/imagebasedinstall/hive/scheme
+github.com/openshift-kni/eco-goinfra/pkg/schemes/machineconfiguration/mctypes
 github.com/openshift-kni/eco-goinfra/pkg/schemes/metallb/frrtypes
 github.com/openshift-kni/eco-goinfra/pkg/schemes/metallb/mlboperator
 github.com/openshift-kni/eco-goinfra/pkg/schemes/metallb/mlbtypes

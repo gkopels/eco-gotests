@@ -232,7 +232,7 @@ func enableRdmaMode() *mco.MCBuilder {
 	Expect(err).ToNot(HaveOccurred(), "Failed to serialize ignition config")
 
 	createdMC, err := mco.NewMCBuilder(APIClient, "02-rdma-netns-exclusive-mode").
-		WithLabel("machineconfiguration.openshift.io/role", NetConfig.CnfMcpLabel).
+		WithLabel("machineconfiguration_remove.openshift.io/role", NetConfig.CnfMcpLabel).
 		WithRawConfig(finalIgnitionConfig).
 		Create()
 	Expect(err).ToNot(HaveOccurred(), "Failed to create RDMA machine config")

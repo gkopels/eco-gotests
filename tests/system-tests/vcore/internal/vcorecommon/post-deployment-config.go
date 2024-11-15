@@ -210,7 +210,7 @@ func SetSystemReservedMemoryForMasterNodes(ctx SpecContext) {
 
 	kubeletConfigName := "set-sysreserved-master"
 	systemReservedBuilder := mco.NewKubeletConfigBuilder(APIClient, kubeletConfigName).
-		WithMCPoolSelector("pools.operator.machineconfiguration.openshift.io/master", "").
+		WithMCPoolSelector("pools.operator.machineconfiguration_remove.openshift.io/master", "").
 		WithSystemReserved(vcoreparams.SystemReservedCPU, vcoreparams.SystemReservedMemory)
 
 	if !systemReservedBuilder.Exists() {

@@ -11,10 +11,10 @@ import (
 
 // MachineConfigRoleLabelKey is metadata key in the MachineConfig. Specifies the node role that config should be applied to.
 // For example: `master` or `worker`
-const MachineConfigRoleLabelKey = "machineconfiguration.openshift.io/role"
+const MachineConfigRoleLabelKey = "machineconfiguration_remove.openshift.io/role"
 
 // KubeletConfigRoleLabelPrefix is the label that must be present in the KubeletConfig CR
-const KubeletConfigRoleLabelPrefix = "pools.operator.machineconfiguration.openshift.io/"
+const KubeletConfigRoleLabelPrefix = "pools.operator.machineconfiguration_remove.openshift.io/"
 
 // +genclient
 // +genclient:nonNamespaced

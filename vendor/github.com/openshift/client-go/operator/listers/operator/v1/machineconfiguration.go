@@ -46,7 +46,7 @@ func (s *machineConfigurationLister) Get(name string) (*v1.MachineConfiguration,
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.NewNotFound(v1.Resource("machineconfiguration"), name)
+		return nil, errors.NewNotFound(v1.Resource("machineconfiguration_remove"), name)
 	}
 	return obj.(*v1.MachineConfiguration), nil
 }

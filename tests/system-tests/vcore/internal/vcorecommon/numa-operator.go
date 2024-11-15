@@ -111,7 +111,7 @@ func VerifyNROPCustomResources(ctx SpecContext) {
 		var err error
 
 		mcpSelectorExpression := metav1.LabelSelectorRequirement{
-			Key:      "machineconfiguration.openshift.io/role",
+			Key:      "machineconfiguration_remove.openshift.io/role",
 			Operator: "In",
 			Values:   []string{VCoreConfig.VCorePpMCPName, VCoreConfig.VCoreCpMCPName},
 		}
