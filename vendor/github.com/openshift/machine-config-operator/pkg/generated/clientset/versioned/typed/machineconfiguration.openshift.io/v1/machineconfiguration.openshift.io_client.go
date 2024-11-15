@@ -19,7 +19,7 @@ type MachineconfigurationV1Interface interface {
 	MachineConfigPoolsGetter
 }
 
-// MachineconfigurationV1Client is used to interact with features provided by the machineconfiguration.openshift.io group.
+// MachineconfigurationV1Client is used to interact with features provided by the machineconfiguration_remove.openshift.io group.
 type MachineconfigurationV1Client struct {
 	restClient rest.Interface
 }

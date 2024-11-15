@@ -9,34 +9,34 @@ const (
 	// XXX
 
 	// CurrentImageAnnotationKey is used to get the current OS image pullspec for a machine
-	CurrentImageAnnotationKey = "machineconfiguration.openshift.io/currentImage"
+	CurrentImageAnnotationKey = "machineconfiguration_remove.openshift.io/currentImage"
 	// DesiredImageAnnotationKey is used to specify the desired OS image pullspec for a machine
-	DesiredImageAnnotationKey = "machineconfiguration.openshift.io/desiredImage"
+	DesiredImageAnnotationKey = "machineconfiguration_remove.openshift.io/desiredImage"
 
 	// CurrentMachineConfigAnnotationKey is used to fetch current MachineConfig for a machine
-	CurrentMachineConfigAnnotationKey = "machineconfiguration.openshift.io/currentConfig"
+	CurrentMachineConfigAnnotationKey = "machineconfiguration_remove.openshift.io/currentConfig"
 	// DesiredMachineConfigAnnotationKey is used to specify the desired MachineConfig for a machine
-	DesiredMachineConfigAnnotationKey = "machineconfiguration.openshift.io/desiredConfig"
+	DesiredMachineConfigAnnotationKey = "machineconfiguration_remove.openshift.io/desiredConfig"
 	// MachineConfigDaemonStateAnnotationKey is used to fetch the state of the daemon on the machine.
-	MachineConfigDaemonStateAnnotationKey = "machineconfiguration.openshift.io/state"
+	MachineConfigDaemonStateAnnotationKey = "machineconfiguration_remove.openshift.io/state"
 	// DesiredDrainerAnnotationKey is set by the MCD to indicate drain/uncordon requests
-	DesiredDrainerAnnotationKey = "machineconfiguration.openshift.io/desiredDrain"
+	DesiredDrainerAnnotationKey = "machineconfiguration_remove.openshift.io/desiredDrain"
 	// LastAppliedDrainerAnnotationKey is set by the controller to indicate the last request applied
-	LastAppliedDrainerAnnotationKey = "machineconfiguration.openshift.io/lastAppliedDrain"
+	LastAppliedDrainerAnnotationKey = "machineconfiguration_remove.openshift.io/lastAppliedDrain"
 	// DrainerStateDrain is used for drainer annotation as a value to indicate needing a drain
 	DrainerStateDrain = "drain"
 	// DrainerStateUncordon is used for drainer annotation as a value to indicate needing an uncordon
 	DrainerStateUncordon = "uncordon"
 	// ClusterControlPlaneTopologyAnnotationKey is set by the node controller by reading value from
 	// controllerConfig. MCD uses the annotation value to decide drain action on the node.
-	ClusterControlPlaneTopologyAnnotationKey = "machineconfiguration.openshift.io/controlPlaneTopology"
+	ClusterControlPlaneTopologyAnnotationKey = "machineconfiguration_remove.openshift.io/controlPlaneTopology"
 	// OpenShiftOperatorManagedLabel is used to filter out kube objects that don't need to be synced by the MCO
 	OpenShiftOperatorManagedLabel = "openshift.io/operator-managed"
 	// ControllerConfigResourceVersionKey is used for the certificate writer to indicate the last controllerconfig object it synced upon
-	ControllerConfigResourceVersionKey = "machineconfiguration.openshift.io/lastSyncedControllerConfigResourceVersion"
+	ControllerConfigResourceVersionKey = "machineconfiguration_remove.openshift.io/lastSyncedControllerConfigResourceVersion"
 
 	// GeneratedByVersionAnnotationKey is used to tag the controllerconfig to synchronize the MCO and MCC
-	GeneratedByVersionAnnotationKey = "machineconfiguration.openshift.io/generated-by-version"
+	GeneratedByVersionAnnotationKey = "machineconfiguration_remove.openshift.io/generated-by-version"
 
 	// MachineConfigDaemonStateWorking is set by daemon when it is applying an update.
 	MachineConfigDaemonStateWorking = "Working"
@@ -48,9 +48,9 @@ const (
 	// MachineConfigDaemonStateUnreconcilable is set by the daemon when a MachineConfig cannot be applied.
 	MachineConfigDaemonStateUnreconcilable = "Unreconcilable"
 	// MachineConfigDaemonReasonAnnotationKey is set by the daemon when it needs to report a human readable reason for its state. E.g. when state flips to degraded/unreconcilable.
-	MachineConfigDaemonReasonAnnotationKey = "machineconfiguration.openshift.io/reason"
+	MachineConfigDaemonReasonAnnotationKey = "machineconfiguration_remove.openshift.io/reason"
 	// MachineConfigDaemonFinalizeFailureAnnotationKey is set by the daemon when ostree fails to finalize
-	MachineConfigDaemonFinalizeFailureAnnotationKey = "machineconfiguration.openshift.io/ostree-finalize-staged-failure"
+	MachineConfigDaemonFinalizeFailureAnnotationKey = "machineconfiguration_remove.openshift.io/ostree-finalize-staged-failure"
 	// InitialNodeAnnotationsFilePath defines the path at which it will find the node annotations it needs to set on the node once it comes up for the first time.
 	// The Machine Config Server writes the node annotations to this path.
 	InitialNodeAnnotationsFilePath = "/etc/machine-config-daemon/node-annotations.json"

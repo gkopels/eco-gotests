@@ -11,10 +11,10 @@ import (
 
 // MachineConfigRoleLabelKey is metadata key in the MachineConfig. Specifies the node role that config should be applied to.
 // For example: `master` or `worker`
-const MachineConfigRoleLabelKey = "machineconfiguration.openshift.io/role"
+const MachineConfigRoleLabelKey = "machineconfiguration_remove.openshift.io/role"
 
 // KubeletConfigRoleLabelPrefix is the label that must be present in the KubeletConfig CR
-const KubeletConfigRoleLabelPrefix = "pools.operator.machineconfiguration.openshift.io/"
+const KubeletConfigRoleLabelPrefix = "pools.operator.machineconfiguration_remove.openshift.io/"
 
 // +genclient
 // +genclient:nonNamespaced
@@ -294,7 +294,7 @@ type ControllerConfigList struct {
 // +openshift:api-approved.openshift.io=https://github.com/openshift/api/pull/1453
 // +openshift:file-pattern=cvoRunLevel=0000_80,operatorName=machine-config,operatorOrdering=01
 // +kubebuilder:metadata:labels="openshift.io/operator-managed="
-// +kubebuilder:printcolumn:name=GeneratedByController,JSONPath=.metadata.annotations.machineconfiguration\.openshift\.io/generated-by-controller-version,type=string,description=Version of the controller that generated the machineconfig. This will be empty if the machineconfig is not managed by a controller.
+// +kubebuilder:printcolumn:name=GeneratedByController,JSONPath=.metadata.annotations.machineconfiguration_remove\.openshift\.io/generated-by-controller-version,type=string,description=Version of the controller that generated the machineconfig. This will be empty if the machineconfig is not managed by a controller.
 // +kubebuilder:printcolumn:name=IgnitionVersion,JSONPath=.spec.config.ignition.version,type=string,description=Version of the Ignition Config defined in the machineconfig.
 // +kubebuilder:printcolumn:name=Age,JSONPath=.metadata.creationTimestamp,type=date
 // +openshift:compatibility-gen:level=1

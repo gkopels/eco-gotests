@@ -8,7 +8,7 @@ import (
 
 var (
 	// GroupName is the group name of this api
-	GroupName = "machineconfiguration.openshift.io"
+	GroupName = "machineconfiguration_remove.openshift.io"
 	// GroupVersion is the version of this api group
 	GroupVersion  = schema.GroupVersion{Group: GroupName, Version: "v1"}
 	schemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)

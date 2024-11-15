@@ -26,7 +26,7 @@ type MCBuilder struct {
 	errorMsg string
 }
 
-// MCAdditionalOptions for machineconfig object.
+// MCAdditionalOptions for machineconfig object.APIGroup
 type MCAdditionalOptions func(builder *MCBuilder) (*MCBuilder, error)
 
 // NewMCBuilder provides struct for MachineConfig object which contains connection to cluster

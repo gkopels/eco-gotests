@@ -49,12 +49,12 @@ type PerformanceProfileSpec struct {
 	HugePages *HugePages `json:"hugepages,omitempty"`
 	// MachineConfigLabel defines the label to add to the MachineConfigs the operator creates. It has to be
 	// used in the MachineConfigSelector of the MachineConfigPool which targets this performance profile.
-	// Defaults to "machineconfiguration.openshift.io/role=<same role as in NodeSelector label key>"
+	// Defaults to "machineconfiguration_remove.openshift.io/role=<same role as in NodeSelector label key>"
 	// +optional
 	MachineConfigLabel map[string]string `json:"machineConfigLabel,omitempty"`
 	// MachineConfigPoolSelector defines the MachineConfigPool label to use in the MachineConfigPoolSelector
 	// of resources like KubeletConfigs created by the operator.
-	// Defaults to "machineconfiguration.openshift.io/role=<same role as in NodeSelector label key>"
+	// Defaults to "machineconfiguration_remove.openshift.io/role=<same role as in NodeSelector label key>"
 	// +optional
 	MachineConfigPoolSelector map[string]string `json:"machineConfigPoolSelector,omitempty"`
 	// NodeSelector defines the Node label to use in the NodeSelectors of resources like Tuned created by the operator.
