@@ -11,6 +11,8 @@ const (
 	LabelLayer2TestCases = "layer2"
 	// LabelFRRTestCases represents frrk8 label that can be used for test cases selection.
 	LabelFRRTestCases = "frrk8s"
+	// LabelNftablesTestCases represents nftables custom firewall rules label that can be used for test cases selection.
+	LabelNftablesTestCases = "frrk8s"
 	// BGPPassword var is used to set password for BGP session between FRR speakers.
 	BGPPassword = "bgp-test"
 	// MlbAddressListError an error message when the ECO_CNF_CORE_NET_MLB_ADDR_LIST is incorrect.
