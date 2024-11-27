@@ -196,6 +196,15 @@ func verifyMetalLbBGPSessionsAreUPOnFrrPod(frrPod *pod.Builder, peerAddrList []s
 	}
 }
 
+func verifyMetalLbBGPSessionsAreDownOnFrrPod(frrPod *pod.Builder, peerAddrList []string) {
+	for _, peerAddress := range removePrefixFromIPList(peerAddrList) {
+		Eventually(frr.BGPNeighborshipHasState,
+			time.Minute*3, tsparams.DefaultRetryInterval).
+			WithArguments(frrPod, peerAddress, "Idle").Should(
+			BeTrue(), "Failed to receive BGP status Idle")
+	}
+}
+
 func createFrrPod(
 	nodeName string,
 	configmapName string,
