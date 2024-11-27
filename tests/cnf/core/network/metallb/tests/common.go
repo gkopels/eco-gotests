@@ -196,6 +196,15 @@ func verifyMetalLbBGPSessionsAreUPOnFrrPod(frrPod *pod.Builder, peerAddrList []s
 	}
 }
 
+func verifyMetalLbBGPSessionsAreDownOnFrrPod(frrPod *pod.Builder, peerAddrList []string) {
+	for _, peerAddress := range removePrefixFromIPList(peerAddrList) {
+		Consistently(frr.BGPNeighborshipHasState,
+			time.Minute, tsparams.DefaultRetryInterval).
+			WithArguments(frrPod, peerAddress, "Established").Should(
+			Not(BeTrue()), "Failed BGP status is Established")
+	}
+}
+
 func createFrrPod(
 	nodeName string,
 	configmapName string,
