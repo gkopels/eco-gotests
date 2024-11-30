@@ -92,6 +92,7 @@ type (
 	// BGPConnectionInfo struct includes the connectRetryTimer.
 	BGPConnectionInfo struct {
 		ConnectRetryTimer int `json:"connectRetryTimer"`
+		RemoteAS          int `json:"remoteAS"`
 	}
 )
 
@@ -307,6 +308,34 @@ func FetchBGPConnectTimeValue(frrk8sPods []*pod.Builder, bgpPeerIP string) (int,
 		// Extracting ConnectRetryTimer from the parsed JSON
 		for _, bgpInfo := range bgpData {
 			return bgpInfo.ConnectRetryTimer, nil
+		}
+	}
+
+	return 0, fmt.Errorf("no BGP neighbor data found for peer %s", bgpPeerIP)
+}
+
+// FetchBGPRemotAS fetches and returns the remoteAS value for the specified BGP peer.
+func FetchBGPRemotAS(frrk8sPods []*pod.Builder, bgpPeerIP string) (int, error) {
+	for _, frrk8sPod := range frrk8sPods {
+		// Run the "show bgp neighbor <bgpPeerIP> json" command on each pod
+		output, err := frrk8sPod.ExecCommand(append(netparam.VtySh,
+			fmt.Sprintf("show bgp neighbor %s json", bgpPeerIP)), "frr")
+		if err != nil {
+			return 0, fmt.Errorf("error collecting BGP neighbor info from pod %s: %w",
+				frrk8sPod.Definition.Name, err)
+		}
+
+		// Parsing JSON
+		var bgpData map[string]BGPConnectionInfo
+		err = json.Unmarshal(output.Bytes(), &bgpData)
+
+		if err != nil {
+			return 0, fmt.Errorf("error parsing BGP neighbor JSON for pod %s: %w", frrk8sPod.Definition.Name, err)
+		}
+
+		// Extracting ConnectRetryTimer from the parsed JSON
+		for _, bgpInfo := range bgpData {
+			return bgpInfo.RemoteAS, nil
 		}
 	}
 
