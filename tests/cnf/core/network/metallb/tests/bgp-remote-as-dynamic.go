@@ -120,6 +120,34 @@ var _ = Describe("BGP remote-dynamicAS", Ordered, Label(tsparams.LabelDynamicRem
 						fmt.Sprintf("The remoteASN does not match the expected AS: %d", 0))
 				})
 		})
+		Context("multi hop", func() {
+			var (
+				hubIPv4ExternalAddresses     = []string{"172.16.0.10", "172.16.0.11"}
+				externalAdvertisedIPv4Routes = []string{"192.168.100.0/24", "192.168.200.0/24"}
+				externalAdvertisedIPv6Routes = []string{"2001:100::0/64", "2001:200::0/64"}
+			)
+
+			AfterEach(func() {
+				By("Clean metallb operator and test namespaces")
+				resetOperatorAndTestNS()
+			})
+
+			It("Verify the establishment of a multi-hop iBGP adjacency using neighbor peer remote-as internal",
+				reportxml.ID("76823"), func() {
+					By("Step up test cases with Frr Node AS 64500 and external Frr AS 64500")
+					frrk8sPods, frrPod := setupBGPRemoteASTestCase(hubIPv4ExternalAddresses, externalAdvertisedIPv4Routes,
+						externalAdvertisedIPv6Routes, dynamicASiBGP, tsparams.LocalBGPASN)
+
+					By("Checking that BGP session is established and up")
+					verifyMetalLbBGPSessionsAreUPOnFrrPod(frrPod, removePrefixFromIPList(ipv4NodeAddrList))
+
+					By("Validating external FRR AS number received on the FRR nodes")
+					Eventually(func() error {
+						return frr.ValidateBGPRemoteAS(frrk8sPods, ipv4metalLbIPList[0], tsparams.LocalBGPASN)
+					}, 60*time.Second, 5*time.Second).Should(Succeed(),
+						fmt.Sprintf("The remoteASN does not match the expected AS: %d", tsparams.LocalBGPASN))
+				})
+		})
 	})
 
 func createBGPPeerWithDynamicASN(peerIP, dynamicASN string, eBgpMultiHop bool) {
