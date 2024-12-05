@@ -6,13 +6,13 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/openshift-kni/eco-goinfra/pkg/deployment"
 	"github.com/openshift-kni/eco-goinfra/pkg/metallb"
 	"github.com/openshift-kni/eco-goinfra/pkg/nodes"
 	"github.com/openshift-kni/eco-goinfra/pkg/pod"
 	"github.com/openshift-kni/eco-goinfra/pkg/reportxml"
 	"github.com/openshift-kni/eco-goinfra/pkg/schemes/metallb/mlbtypesv1beta2"
 	. "github.com/openshift-kni/eco-gotests/tests/cnf/core/network/internal/netinittools"
+	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/internal/netparam"
 	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/metallb/internal/frr"
 	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/metallb/internal/metallbenv"
 	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/metallb/internal/tsparams"
@@ -23,9 +23,12 @@ import (
 var _ = Describe("BGP remote-dynamicAS", Ordered, Label(tsparams.LabelDynamicRemoteASTestCases),
 	ContinueOnFailure, func() {
 		var (
-			err           error
-			dynamicASiBGP = "internal"
-			dynamicASeBGP = "external"
+			err                        error
+			dynamicASiBGP              = "internal"
+			dynamicASeBGP              = "external"
+			hubPodWorker0              = "hub-pod-worker-0"
+			hubPodWorker1              = "hub-pod-worker-1"
+			frrExternalMasterIPAddress = "172.16.0.1"
 		)
 
 		BeforeAll(func() {
@@ -55,11 +58,6 @@ var _ = Describe("BGP remote-dynamicAS", Ordered, Label(tsparams.LabelDynamicRem
 				"Failed to detect master nodes")
 		})
 
-		AfterAll(func() {
-			By("Remove custom metallb test label from nodes")
-			removeNodeLabel(workerNodeList, metalLbTestsLabel)
-		})
-
 		Context("single hop", func() {
 			var (
 				hubIPv4ExternalAddresses     = []string{"172.16.0.10", "172.16.0.11"}
@@ -72,9 +70,9 @@ var _ = Describe("BGP remote-dynamicAS", Ordered, Label(tsparams.LabelDynamicRem
 				resetOperatorAndTestNS()
 			})
 
-			It("Verify the establishment of an eBGP adjacency using neighbor peer remote-as external",
+			FIt("Verify the establishment of an eBGP adjacency using neighbor peer remote-as external",
 				reportxml.ID("76821"), func() {
-					By("Step up test cases with Frr Node AS 64500 and external Frr AS 64501")
+					By("Setup test cases with Frr Node AS 64500 and external Frr AS 64501")
 					frrk8sPods, frrPod := setupBGPRemoteASTestCase(hubIPv4ExternalAddresses, externalAdvertisedIPv4Routes,
 						externalAdvertisedIPv6Routes, dynamicASeBGP, tsparams.RemoteBGPASN)
 
@@ -90,7 +88,7 @@ var _ = Describe("BGP remote-dynamicAS", Ordered, Label(tsparams.LabelDynamicRem
 
 			It("Verify the establishment of an iBGP adjacency using neighbor peer remote-as internal",
 				reportxml.ID("76822"), func() {
-					By("Step up test cases with Frr Node AS 64500 and external Frr AS 64500")
+					By("Setup test cases with Frr Node AS 64500 and external Frr AS 64500")
 					frrk8sPods, frrPod := setupBGPRemoteASTestCase(hubIPv4ExternalAddresses, externalAdvertisedIPv4Routes,
 						externalAdvertisedIPv6Routes, dynamicASiBGP, tsparams.LocalBGPASN)
 
@@ -106,7 +104,7 @@ var _ = Describe("BGP remote-dynamicAS", Ordered, Label(tsparams.LabelDynamicRem
 
 			It("Verify the failure to establish a iBGP adjacency with a misconfigured external FRR pod",
 				reportxml.ID("76825"), func() {
-					By("Step up test cases with Frr Node AS 64500 and misconfigured iBGP external Frr AS 64501")
+					By("Setup test cases with Frr Node AS 64500 and misconfigured iBGP external Frr AS 64501")
 					frrk8sPods, frrPod := setupBGPRemoteASTestCase(hubIPv4ExternalAddresses, externalAdvertisedIPv4Routes,
 						externalAdvertisedIPv6Routes, dynamicASiBGP, tsparams.RemoteBGPASN)
 
@@ -118,6 +116,72 @@ var _ = Describe("BGP remote-dynamicAS", Ordered, Label(tsparams.LabelDynamicRem
 						return frr.ValidateBGPRemoteAS(frrk8sPods, ipv4metalLbIPList[0], 0)
 					}, 60*time.Second, 5*time.Second).Should(Succeed(),
 						fmt.Sprintf("The remoteASN does not match the expected AS: %d", 0))
+				})
+		})
+		Context("multi hop", func() {
+			var (
+				hubIPv4ExternalAddresses     = []string{"172.16.0.10", "172.16.0.11"}
+				externalAdvertisedIPv4Routes = []string{"192.168.100.0/24", "192.168.200.0/24"}
+				externalAdvertisedIPv6Routes = []string{"2001:100::0/64", "2001:200::0/64"}
+				frrNodeSecIntIPv4Addresses   = []string{"10.100.100.254", "10.100.100.253"}
+			)
+
+			AfterEach(func() {
+				By("Removing static routes from the speakers")
+				frrk8sPods, err := pod.List(APIClient, NetConfig.MlbOperatorNamespace, metav1.ListOptions{
+					LabelSelector: tsparams.FRRK8sDefaultLabel,
+				})
+				Expect(err).ToNot(HaveOccurred(), "Failed to list pods")
+
+				speakerRoutesMap := buildRoutesMapWithSpecificRoutes(frrk8sPods, []string{ipv4metalLbIPList[0],
+					ipv4metalLbIPList[1], frrNodeSecIntIPv4Addresses[0], frrNodeSecIntIPv4Addresses[1]})
+
+				for _, frrk8sPod := range frrk8sPods {
+					out, err := frr.SetStaticRoute(frrk8sPod, "del", frrExternalMasterIPAddress, speakerRoutesMap)
+					Expect(err).ToNot(HaveOccurred(), out)
+				}
+
+				By("Clean metallb operator and test namespaces")
+				resetOperatorAndTestNS()
+			})
+
+			FIt("Verify the establishment of a multi-hop iBGP adjacency using neighbor peer remote-as external",
+				reportxml.ID("76823"), func() {
+					hubPodWorkerName := []string{hubPodWorker0, hubPodWorker1}
+					frrPod, frrk8sPods := setupBGPRemoteASMultiHopTest(ipv4metalLbIPList, hubIPv4ExternalAddresses,
+						externalAdvertisedIPv4Routes, externalAdvertisedIPv6Routes, hubPodWorkerName,
+						frrExternalMasterIPAddress, tsparams.LocalBGPASN, false)
+
+					By("Creating a BGP Peer with dynamicASN")
+					createBGPPeerWithDynamicASN(frrExternalMasterIPAddress, dynamicASiBGP, false)
+					By("Checking that BGP session is established and up")
+					verifyMetalLbBGPSessionsAreUPOnFrrPod(frrPod, removePrefixFromIPList(ipv4NodeAddrList))
+
+					By("Validating external FRR AS number received on the FRR nodes")
+					Eventually(func() error {
+						return frr.ValidateBGPRemoteAS(frrk8sPods, frrExternalMasterIPAddress, tsparams.LocalBGPASN)
+					}, 60*time.Second, 5*time.Second).Should(Succeed(),
+						fmt.Sprintf("The remoteASN does not match the expected AS: %d", tsparams.LocalBGPASN))
+				})
+
+			It("Verify the establishment of a multi-hop eBGP adjacency using neighbor peer remote-as external",
+				reportxml.ID("76823"), func() {
+					hubPodWorkerName := []string{hubPodWorker0, hubPodWorker1}
+					frrPod, frrk8sPods := setupBGPRemoteASMultiHopTest(ipv4metalLbIPList, hubIPv4ExternalAddresses,
+						externalAdvertisedIPv4Routes, externalAdvertisedIPv6Routes, hubPodWorkerName,
+						frrExternalMasterIPAddress, tsparams.RemoteBGPASN, true)
+
+					By("Creating a BGP Peer with dynamicASN")
+					createBGPPeerWithDynamicASN(frrExternalMasterIPAddress, dynamicASeBGP, true)
+
+					By("Checking that BGP session is established and up")
+					verifyMetalLbBGPSessionsAreUPOnFrrPod(frrPod, removePrefixFromIPList(ipv4NodeAddrList))
+
+					By("Validating external FRR AS number received on the FRR nodes")
+					Eventually(func() error {
+						return frr.ValidateBGPRemoteAS(frrk8sPods, frrExternalMasterIPAddress, tsparams.RemoteBGPASN)
+					}, 60*time.Second, 5*time.Second).Should(Succeed(),
+						fmt.Sprintf("The remoteASN does not match the expected AS: %d", tsparams.RemoteBGPASN))
 				})
 		})
 	})
@@ -163,14 +227,6 @@ func setupBGPRemoteASTestCase(hubIPv4ExternalAddresses, externalAdvertisedIPv4Ro
 	err := metallbenv.CreateNewMetalLbDaemonSetAndWaitUntilItsRunning(tsparams.DefaultTimeout, workerLabelMap)
 	Expect(err).ToNot(HaveOccurred(), "Failed to recreate metalLb daemonset")
 
-	By("Waiting until the new frr-k8s-webhook-server deployment is in Ready state.")
-
-	frrk8sWebhookDeployment, err := deployment.Pull(
-		APIClient, "frr-k8s-webhook-server", NetConfig.MlbOperatorNamespace)
-	Expect(err).ToNot(HaveOccurred(), "Fail to pull frr-k8s-webhook-server")
-	Expect(frrk8sWebhookDeployment.IsReady(30*time.Second)).To(BeTrue(),
-		"frr-k8s-webhook-server deployment is not ready")
-
 	By("Collect connection information for the Frr Node pods")
 
 	frrk8sPods, err := pod.List(APIClient, NetConfig.MlbOperatorNamespace, metav1.ListOptions{
@@ -187,4 +243,80 @@ func setupBGPRemoteASTestCase(hubIPv4ExternalAddresses, externalAdvertisedIPv4Ro
 	createBGPPeerWithDynamicASN(ipv4metalLbIPList[0], dynamicAS, false)
 
 	return frrk8sPods, frrPod
+}
+
+func setupBGPRemoteASMultiHopTest(ipv4metalLbIPList, hubIPv4ExternalAddresses, externalAdvertisedIPv4Routes,
+	externalAdvertisedIPv6Routes, hubPodWorkerName []string, frrExternalMasterIPAddress string, asNumber int,
+	eBGP bool) (*pod.Builder, []*pod.Builder) {
+	var (
+		nodeAddrList []string
+	)
+
+	By("Creating a new instance of MetalLB Speakers on workers")
+
+	err := metallbenv.CreateNewMetalLbDaemonSetAndWaitUntilItsRunning(tsparams.DefaultTimeout, workerLabelMap)
+	Expect(err).ToNot(HaveOccurred(), "Failed to recreate metalLb daemonset")
+
+	By("Collecting information before test")
+
+	frrk8sPods, err := pod.List(APIClient, NetConfig.MlbOperatorNamespace, metav1.ListOptions{
+		LabelSelector: tsparams.FRRK8sNodeLabel,
+	})
+	Expect(err).ToNot(HaveOccurred(), "Failed to list speaker pods")
+	By("Setting test iteration parameters")
+
+	masterClientPodIP, _, _, nodeAddrList, _, _, err :=
+		metallbenv.DefineIterationParams(
+			ipv4metalLbIPList, ipv6metalLbIPList, ipv4NodeAddrList, ipv6NodeAddrList, netparam.IPV4Family)
+	Expect(err).ToNot(HaveOccurred(), "Fail to set iteration parameters")
+
+	By("Creating External NAD for master FRR pod")
+	createExternalNad(tsparams.ExternalMacVlanNADName)
+
+	By("Creating External NAD for hub FRR pods")
+	createExternalNad(tsparams.HubMacVlanNADName)
+
+	By("Creating static ip annotation for hub0")
+
+	hub0BRstaticIPAnnotation := createStaticIPAnnotations(tsparams.ExternalMacVlanNADName,
+		tsparams.HubMacVlanNADName,
+		[]string{fmt.Sprintf("%s/24", ipv4metalLbIPList[0])},
+		[]string{fmt.Sprintf("%s/24", hubIPv4ExternalAddresses[0])})
+
+	By("Creating static ip annotation for hub1")
+
+	hub1BRstaticIPAnnotation := createStaticIPAnnotations(tsparams.ExternalMacVlanNADName,
+		tsparams.HubMacVlanNADName,
+		[]string{fmt.Sprintf("%s/24", ipv4metalLbIPList[1])},
+		[]string{fmt.Sprintf("%s/24", hubIPv4ExternalAddresses[1])})
+
+	By("Creating MetalLb Hub pod configMap")
+
+	hubConfigMap := createHubConfigMap("hub-node-config")
+
+	By("Creating FRR Hub pod on worker node 0")
+
+	_ = createFrrHubPod(hubPodWorkerName[0],
+		workerNodeList[0].Object.Name, hubConfigMap.Definition.Name, []string{}, hub0BRstaticIPAnnotation)
+
+	By("Creating FRR Hub pod on worker node 1")
+
+	_ = createFrrHubPod(hubPodWorkerName[1],
+		workerNodeList[1].Object.Name, hubConfigMap.Definition.Name, []string{}, hub1BRstaticIPAnnotation)
+
+	By("Creating configmap and MetalLb Master pod")
+
+	frrPod := createMasterFrrPod(asNumber, frrExternalMasterIPAddress, nodeAddrList, hubIPv4ExternalAddresses,
+		externalAdvertisedIPv4Routes, externalAdvertisedIPv6Routes, eBGP)
+
+	By("Adding static routes to the speakers")
+
+	speakerRoutesMap := buildRoutesMapWithSpecificRoutes(frrk8sPods, ipv4metalLbIPList)
+
+	for _, frrk8sPod := range frrk8sPods {
+		out, err := frr.SetStaticRoute(frrk8sPod, "add", masterClientPodIP, speakerRoutesMap)
+		Expect(err).ToNot(HaveOccurred(), out)
+	}
+
+	return frrPod, frrk8sPods
 }

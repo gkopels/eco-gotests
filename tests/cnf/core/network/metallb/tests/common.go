@@ -11,6 +11,7 @@ import (
 	"github.com/openshift-kni/eco-goinfra/pkg/daemonset"
 	"github.com/openshift-kni/eco-goinfra/pkg/metallb"
 	"github.com/openshift-kni/eco-goinfra/pkg/nad"
+	"github.com/openshift-kni/eco-goinfra/pkg/namespace"
 	"github.com/openshift-kni/eco-goinfra/pkg/nodes"
 	"github.com/openshift-kni/eco-goinfra/pkg/pod"
 	"github.com/openshift-kni/eco-goinfra/pkg/service"
@@ -67,6 +68,19 @@ func updateNodeLabel(workerNodeList []*nodes.Builder, nodeLabel map[string]strin
 }
 
 func setWorkerNodeListAndLabelForBfdTests(
+	workerNodeList []*nodes.Builder, nodeSelector map[string]string) (map[string]string, []*nodes.Builder) {
+	if len(workerNodeList) > 2 {
+		By(fmt.Sprintf(
+			"Worker node number is greater than 2. Limit worker nodes for bfd test using label %v", nodeSelector))
+		addNodeLabel(workerNodeList[:2], nodeSelector)
+
+		return metalLbTestsLabel, workerNodeList[:2]
+	}
+
+	return NetConfig.WorkerLabelMap, workerNodeList
+}
+
+func setWorkerNodeListAndLabelForFrrTests(
 	workerNodeList []*nodes.Builder, nodeSelector map[string]string) (map[string]string, []*nodes.Builder) {
 	if len(workerNodeList) > 2 {
 		By(fmt.Sprintf(
@@ -348,4 +362,31 @@ func metalLbDaemonSetShouldMatchConditionAndBeInReadyState(
 		return 0
 	}, tsparams.DefaultTimeout, tsparams.DefaultRetryInterval).Should(expectedCondition, errorMessage)
 	Expect(metalLbDs.IsReady(120*time.Second)).To(BeTrue(), "MetalLb daemonSet is not Ready")
+}
+
+func resetOperatorAndTestNS() {
+	By("Cleaning MetalLb operator namespace")
+
+	metalLbNs, err := namespace.Pull(APIClient, NetConfig.MlbOperatorNamespace)
+	Expect(err).ToNot(HaveOccurred(), "Failed to pull metalLb operator namespace")
+	err = metalLbNs.CleanObjects(
+		tsparams.DefaultTimeout,
+		metallb.GetBGPPeerGVR(),
+		metallb.GetBFDProfileGVR(),
+		metallb.GetBGPPeerGVR(),
+		metallb.GetBGPAdvertisementGVR(),
+		metallb.GetIPAddressPoolGVR(),
+		metallb.GetMetalLbIoGVR(),
+		metallb.GetFrrConfigurationGVR())
+	Expect(err).ToNot(HaveOccurred(), "Failed to remove object's from operator namespace")
+
+	By("Cleaning test namespace")
+
+	err = namespace.NewBuilder(APIClient, tsparams.TestNamespaceName).CleanObjects(
+		tsparams.DefaultTimeout,
+		pod.GetGVR(),
+		service.GetServiceGVR(),
+		configmap.GetGVR(),
+		nad.GetGVR())
+	Expect(err).ToNot(HaveOccurred(), "Failed to clean test namespace")
 }
