@@ -120,6 +120,7 @@ func (builder *MCBuilder) Get() (*mcv1.MachineConfig, error) {
 	err := builder.apiClient.Get(context.TODO(), runtimeclient.ObjectKey{Name: builder.Definition.Name}, machineConfig)
 
 	if err != nil {
+		fmt.Println(err)
 		glog.V(100).Infof("MachineConfig object %s does not exist", builder.Definition.Name)
 
 		return nil, err
