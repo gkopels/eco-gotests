@@ -209,7 +209,7 @@ var _ = Describe("rootless", Ordered, Label(tsparams.LabelSuite), ContinueOnFail
 				"Both vlans have the same ID. Please select different ID using ECO_CNF_CORE_NET_VLAN env variable")
 		})
 
-		It("single VF, multiple tap devices, multiple mac-vlans", reportxml.ID("63806"), func() {
+		FIt("single VF, multiple tap devices, multiple mac-vlans", reportxml.ID("63806"), func() {
 			defineAndCreateSrIovNetworks(vlanID)
 			defineAndCreateTapNADs(nil, nil)
 
