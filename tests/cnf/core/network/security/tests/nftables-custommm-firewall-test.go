@@ -2,12 +2,13 @@ package tests
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	butaneConfig "github.com/coreos/butane/config"
-	"github.com/coreos/butane/config/common"
+
 	"github.com/golang/glog"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openshift-kni/eco-goinfra/pkg/clients"
 	"github.com/openshift-kni/eco-goinfra/pkg/configmap"
 	"github.com/openshift-kni/eco-goinfra/pkg/mco"
 	"github.com/openshift-kni/eco-goinfra/pkg/nad"
@@ -15,36 +16,34 @@ import (
 	"github.com/openshift-kni/eco-goinfra/pkg/pod"
 	"github.com/openshift-kni/eco-goinfra/pkg/reportxml"
 	"github.com/openshift-kni/eco-gotests/tests/cnf/core/internal/coreparams"
+	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/internal/cmd"
 	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/internal/define"
 	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/internal/ipaddr"
 	. "github.com/openshift-kni/eco-gotests/tests/cnf/core/network/internal/netinittools"
 	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/security/internal/tsparams"
 	ocpoperatorv1 "github.com/openshift/api/operator/v1"
-	mcv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 	"time"
 
+	ignition "github.com/coreos/ignition/v2/config/v3_4/types"
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
 	newtype "k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/yaml"
 )
 
 var (
 	hubIPv4ExternalAddresses = []string{"172.16.0.10", "172.16.0.11"}
-	externalNad              *nad.Builder
-	metalLbTestsLabel        = map[string]string{"metallb": "metallbtests"}
+	hubIPv4Network           = "172.16.0.0/24"
 	workerNodeList           []*nodes.Builder
-	masterNodeList           []*nodes.Builder
 	ipv4NodeAddrList         []string
+	ipv4SecurityIPList       []string
 	workerLabelMap           map[string]string
-)
-
-const (
-	requiredWorkerNodeNumber = 2
-	// cnfWorkerNodeList []*nodes.Builder
+	testPodWorker0           *pod.Builder
+	testPodWorker1           *pod.Builder
+	testPodList              []*pod.Builder
+	routeMap                 map[string]string
 )
 
 var _ = Describe("nftables", Ordered, Label(tsparams.LabelNftablesTestCases), ContinueOnFailure, func() {
@@ -57,54 +56,75 @@ var _ = Describe("nftables", Ordered, Label(tsparams.LabelNftablesTestCases), Co
 		Expect(err).ToNot(HaveOccurred(), "Failed to discover worker nodes")
 
 		By("Selecting worker node for Security tests")
-		// workerNodeList
 		workerLabelMap, workerNodeList = setWorkerNodeListAndLabelForTests(cnfWorkerNodeList)
 		ipv4NodeAddrList, err = nodes.ListExternalIPv4Networks(
 			APIClient, metav1.ListOptions{LabelSelector: labels.Set(workerLabelMap).String()})
 		Expect(err).ToNot(HaveOccurred(), "Failed to collect external nodes ip addresses")
 
-		By("Edit the machineconfiguration cluster to include nftables")
-		// updateMachineConfigurationCluster(true)
+		By("Edit the machineconfiguration cluster to include NFTables")
+		updateMachineConfigurationCluster(true)
 
-		By("Creating external FRR pod on master node")
-		// _ = deployTestPods(hubIPv4ExternalAddresses[0])
+		By("Create test pods on worker nodes")
+		testPodWorker0 = createTestPodsOnWorkers(workerNodeList[0].Definition.Name, 8888)
+		testPodWorker1 := createTestPodsOnWorkers(workerNodeList[1].Definition.Name, 8888)
+		testPodList = []*pod.Builder{testPodWorker0, testPodWorker1}
 
+		By("Create a static route to the external Pod network on each worker node")
+		ipv4SecurityIPList, err = NetConfig.GetSecurityIPList()
+		Expect(err).ToNot(HaveOccurred(), "Failed to retrieve the ipv4SecurityIPList")
+
+		routeMap = buildRoutesMapWithSpecificRoutes(testPodList, ipv4SecurityIPList)
+
+		for _, testPod := range testPodList {
+			outPut, err := setStaticRoute(testPod, "add", hubIPv4Network, routeMap)
+			Expect(err).ToNot(HaveOccurred(), outPut, "Failed to create a static route on the worker node")
+		}
 	})
 
 	AfterAll(func() {
-		By("Edit the machineconfiguration cluster to remove nftables")
-		//updateMachineConfigurationCluster(false)
+		By("Edit the machineconfiguration cluster to remove NFTables")
+		// updateMachineConfigurationCluster(false)
+
+		By("Remove the static route to the external Pod network on each worker node")
+		for _, testPod := range testPodList {
+			outPut, err := setStaticRoute(testPod, "del", hubIPv4Network, routeMap)
+			Expect(err).ToNot(HaveOccurred(), outPut, "Failed to create a static route on the worker node")
+		}
 	})
 
 	Context("custom firewall", func() {
-		It("Verify the creation of a new custom node firewall nftables table with an ingress rule",
-			reportxml.ID("77412"), func() {
-				fmt.Println("Hello World")
-				By("Create nftables butane file")
-				mcConfig, err := CreateMC("worker")
-				Expect(err).ToNot(HaveOccurred(), "Failed to create nftables rules")
-				By("Apply the machineConfig")
-				applyMachineConfig(mcConfig)
-				setupRemoteMultiHopTest(ipv4NodeAddrList, hubIPv4ExternalAddresses, workerNodeList,
-					[]string{"hub-pod-worker-0", "hub-pod-worker-1"}, "172.16.0.1")
+		AfterEach(func() {
+			By("Define and delete a NFTables custom rule")
+			createMCAndWaitforMCPStable(tsparams.CustomFireWallDelete)
+			err := mco.NewMCBuilder(APIClient, "98-nftables-cnf-worker").Delete()
+			Expect(err).ToNot(HaveOccurred(), "Failed to get the machineConfig")
 
-				time.Sleep(10 * time.Minute)
+		})
+
+		It("Verify the creation of a new custom node firewall NFTables table with an ingress rule",
+			reportxml.ID("77412"), func() {
+
+				By("Setup test environment")
+				masterPod := setupRemoteMultiHopTest(ipv4SecurityIPList, hubIPv4ExternalAddresses, ipv4NodeAddrList, workerNodeList,
+					[]string{"hub-pod-worker-0", "hub-pod-worker-1"})
+
+				By("Verify ICMP connectivity between the master Pod and the test pods on the workers")
+				err := cmd.ICMPConnectivityCheck(masterPod, ipv4NodeAddrList, "net1")
+				Expect(err).ToNot(HaveOccurred(), "Failed to ping the worker nodes")
+
+				By("Verify TCP traffic over port 8888 between the master Pod and the test pods on the workers")
+				err = validateTCPTraffic(masterPod, ipv4NodeAddrList, 8888)
+				Expect(err).ToNot(HaveOccurred(), "Failed to send TCP traffic over port 8888 to the worker nodes")
+
+				By("Define and create a NFTables custom rule")
+				createMCAndWaitforMCPStable(tsparams.CustomFirewallInputPort8888)
+				//time.Sleep(time.Minute)
+				By("Verify TCP traffic over port 8888 between the master Pod and the test pods on the workers")
+				err = validateTCPTraffic(masterPod, ipv4NodeAddrList, 8888)
+				Expect(err).To(HaveOccurred(), "Successfully sent TCP traffic over port 8888 to the worker nodes")
 			})
 	})
-
 })
-
-func deployTestPods(hubIPv4ExternalAddresses string) *pod.Builder {
-
-	By("Creating External NAD")
-	createExternalNad(tsparams.ExternalMacVlanNADName)
-
-	By("Creating static ip annotation")
-
-	By("Creating FRR Pod")
-
-	return nil
-}
 
 func createExternalNad(name string) {
 	var externalNad *nad.Builder
@@ -118,7 +138,7 @@ func createExternalNad(name string) {
 }
 
 func updateMachineConfigurationCluster(nftables bool) {
-	By("should have MetalLB controller in running state")
+	By("should update machineconfiguration cluster")
 	var jsonBytes []byte
 
 	if nftables {
@@ -148,28 +168,8 @@ func updateMachineConfigurationCluster(nftables bool) {
 	}
 }
 
-func applyMachineConfig(mc []byte) {
-	obj := mcv1.MachineConfig{}
-	err := yaml.Unmarshal(mc, obj)
-	Expect(err).ToNot(HaveOccurred(), "Failed to create external NetworkAttachmentDefinition")
-	fmt.Println(string(mc))
-	err = APIClient.AttachScheme(mcv1.Install)
-	err = APIClient.Create(context.TODO(), &obj)
-	Expect(err).ToNot(HaveOccurred(), "Failed to create external NetworkAttachmentDefinition")
-
-	_, err = mco.NewMCBuilder(APIClient, "98-nftables-cnf-worker").
-		WithLabel("machineconfiguration.openshift.io/role", NetConfig.CnfMcpLabel).
-		WithRawConfig(mc).Create()
-	Expect(err).ToNot(HaveOccurred(), "Failed to create external NetworkAttachmentDefinition")
-}
-
-func setupRemoteMultiHopTest(ipv4metalLbIPList, hubIPv4ExternalAddresses []string,
-	workerNodeList []*nodes.Builder, hubPodWorkerName []string, frrExternalMasterIPAddress string) (*pod.Builder, []*pod.Builder) {
-	By("Setting test parameters")
-	frrk8sPods, err := pod.List(APIClient, NetConfig.MlbOperatorNamespace, metav1.ListOptions{
-		LabelSelector: "app=frr-k8s",
-	})
-	Expect(err).ToNot(HaveOccurred(), "Failed to list frrk8 pods")
+func setupRemoteMultiHopTest(ipv4SecurityIPList, hubIPv4ExternalAddresses, ipv4NodeAddrList []string,
+	workerNodeList []*nodes.Builder, hubPodWorkerName []string) *pod.Builder {
 
 	By("Creating External NAD for master FRR pod")
 	createExternalNad(tsparams.ExternalMacVlanNADName)
@@ -178,17 +178,19 @@ func setupRemoteMultiHopTest(ipv4metalLbIPList, hubIPv4ExternalAddresses []strin
 	createExternalNad("nad-hub")
 
 	By("Creating static ip annotation for hub0")
+	//ipv4SecurityIPList, err := NetConfig.GetMetalLbVirIP()
+	//Expect(err).ToNot(HaveOccurred(), "Failed to retrieve the ipv4SecurityIPList")
 
 	hub0BRstaticIPAnnotation := createStaticIPAnnotations(tsparams.ExternalMacVlanNADName,
 		"nad-hub",
-		[]string{fmt.Sprintf("%s/24", ipv4metalLbIPList[0])},
+		[]string{fmt.Sprintf("%s/24", ipv4SecurityIPList[0])},
 		[]string{fmt.Sprintf("%s/24", hubIPv4ExternalAddresses[0])})
 
 	By("Creating static ip annotation for hub1")
 
 	hub1BRstaticIPAnnotation := createStaticIPAnnotations(tsparams.ExternalMacVlanNADName,
 		"nad-hub",
-		[]string{fmt.Sprintf("%s/24", ipv4metalLbIPList[1])},
+		[]string{fmt.Sprintf("%s/24", ipv4SecurityIPList[1])},
 		[]string{fmt.Sprintf("%s/24", hubIPv4ExternalAddresses[1])})
 
 	By("Creating MetalLb Hub pod configMap")
@@ -206,19 +208,19 @@ func setupRemoteMultiHopTest(ipv4metalLbIPList, hubIPv4ExternalAddresses []strin
 		workerNodeList[1].Object.Name, hubConfigMap.Definition.Name, []string{}, hub1BRstaticIPAnnotation)
 
 	By("Creating configmap and MetalLb Master pod")
-	time.Sleep(20 * time.Minute)
-	frrPod := createMasterFrrPod(frrExternalMasterIPAddress, ipv4NodeAddrList, hubIPv4ExternalAddresses)
 
-	By("Adding static routes to the speakers")
+	configMapStaticRoutes := defineConfigMapWithStaticRouteAndNetwork(hubIPv4ExternalAddresses, removePrefixFromIPList(ipv4NodeAddrList))
+	masterConfigMap := createMasterConfigMap("master-configmap", configMapStaticRoutes)
 
-	speakerRoutesMap := buildRoutesMapWithSpecificRoutes(frrk8sPods, ipv4metalLbIPList)
+	masterStaticIPAnnotation := createStaticIPAnnotations(tsparams.ExternalMacVlanNADName,
+		"nad-hub",
+		[]string{"172.16.0.1/24"},
+		[]string{fmt.Sprintf("")})
 
-	for _, frrk8sPod := range frrk8sPods {
-		out, err := SetStaticRoute(frrk8sPod, "add", "172.16.0.1", speakerRoutesMap)
-		Expect(err).ToNot(HaveOccurred(), out)
-	}
+	frrPod := createMasterPodTest("master-pod", "master-0", masterConfigMap.Definition.Name,
+		[]string{}, masterStaticIPAnnotation)
 
-	return frrPod, frrk8sPods
+	return frrPod
 }
 
 func createStaticIPAnnotations(internalNADName, externalNADName string, internalIPAddresses,
@@ -231,7 +233,15 @@ func createStaticIPAnnotations(internalNADName, externalNADName string, internal
 }
 
 func createHubConfigMap(name string) *configmap.Builder {
-	configMapData := DefineBaseConfig(tsparams.DaemonsFile, "")
+	configMapData := DefineBaseConfig(tsparams.DaemonsFile, "", "")
+	hubConfigMap, err := configmap.NewBuilder(APIClient, name, tsparams.TestNamespaceName).WithData(configMapData).Create()
+	Expect(err).ToNot(HaveOccurred(), "Failed to create hub config map")
+
+	return hubConfigMap
+}
+
+func createMasterConfigMap(name, configMapStaticRoutes string) *configmap.Builder {
+	configMapData := DefineBaseConfig(tsparams.DaemonsFile, configMapStaticRoutes, "")
 	hubConfigMap, err := configmap.NewBuilder(APIClient, name, tsparams.TestNamespaceName).WithData(configMapData).Create()
 	Expect(err).ToNot(HaveOccurred(), "Failed to create hub config map")
 
@@ -264,76 +274,34 @@ func createFrrHubPod(name, nodeName, configmapName string, defaultCMD []string,
 	return frrPod
 }
 
+func createMasterPodTest(name, nodeName, configmapName string, defaultCMD []string, secondaryNetConfig []*types.NetworkSelectionElement) *pod.Builder {
+	frrPod := pod.NewBuilder(APIClient, name, tsparams.TestNamespaceName, NetConfig.FrrImage).
+		DefineOnNode(nodeName).
+		WithTolerationToMaster().
+		WithSecondaryNetwork(secondaryNetConfig).RedefineDefaultCMD(defaultCMD)
+
+	By("Creating FRR container")
+
+	frrContainer := pod.NewContainerBuilder(
+		"frr", NetConfig.CnfNetTestContainer, []string{"/bin/bash", "-c", "sleep INF"}).
+		WithSecurityCapabilities([]string{"NET_ADMIN", "NET_RAW", "SYS_ADMIN"}, true)
+
+	frrCtr, err := frrContainer.GetContainerCfg()
+	Expect(err).ToNot(HaveOccurred(), "Failed to get container configuration")
+	frrPod.WithAdditionalContainer(frrCtr).WithLocalVolume(configmapName, "/etc/frr")
+
+	By("Creating FRR pod in the test namespace")
+
+	frrPod, err = frrPod.WithPrivilegedFlag().CreateAndWaitUntilRunning(5 * time.Minute)
+	Expect(err).ToNot(HaveOccurred(), "Failed to create FRR test pod")
+
+	return frrPod
+}
+
 func setWorkerNodeListAndLabelForTests(
 	workerNodeList []*nodes.Builder) (map[string]string, []*nodes.Builder) {
 
 	return NetConfig.WorkerLabelMap, workerNodeList
-}
-
-func createMasterFrrPod(frrExternalMasterIPAddress string, ipv4NodeAddrList,
-	hubIPAddresses []string) *pod.Builder {
-	masterConfigMap := createConfigMapWithStaticRoutes(ipv4NodeAddrList, hubIPAddresses)
-
-	By("Creating static ip annotation for master FRR pod")
-
-	masterStaticIPAnnotation := pod.StaticIPAnnotation(
-		"nad-hub", []string{fmt.Sprintf("%s/24", frrExternalMasterIPAddress)})
-
-	By("Creating FRR Master Pod")
-
-	frrPod := createFrrPod(
-		masterNodeList[0].Object.Name, masterConfigMap.Definition.Name, []string{}, masterStaticIPAnnotation)
-
-	return frrPod
-}
-
-func createConfigMapWithStaticRoutes(nodeAddrList, hubIPAddresses []string) *configmap.Builder {
-	configMapData := DefineBaseConfig(tsparams.DaemonsFile, "")
-	masterConfigMap, err := configmap.NewBuilder(APIClient, "frr-master-node-config", tsparams.TestNamespaceName).
-		WithData(configMapData).Create()
-	Expect(err).ToNot(HaveOccurred(), "Failed to create config map")
-
-	return masterConfigMap
-}
-
-func createFrrPod(
-	nodeName string,
-	configmapName string,
-	defaultCMD []string,
-	secondaryNetConfig []*types.NetworkSelectionElement,
-	podName ...string) *pod.Builder {
-	name := "frr"
-
-	if len(podName) > 0 {
-		name = podName[0]
-	}
-
-	frrPod := pod.NewBuilder(APIClient, name, tsparams.TestNamespaceName, NetConfig.FrrImage).
-		DefineOnNode(nodeName).
-		WithTolerationToMaster().
-		WithSecondaryNetwork(secondaryNetConfig).
-		RedefineDefaultCMD(defaultCMD)
-
-	By("Creating FRR container")
-
-	if configmapName != "" {
-		frrContainer := pod.NewContainerBuilder(
-			"frr2",
-			NetConfig.CnfNetTestContainer,
-			[]string{"/bin/bash", "-c", "ip route del default && sleep INF"}).
-			WithSecurityCapabilities([]string{"NET_ADMIN", "NET_RAW", "SYS_ADMIN"}, true)
-
-		frrCtr, err := frrContainer.GetContainerCfg()
-		Expect(err).ToNot(HaveOccurred(), "Failed to get container configuration")
-		frrPod.WithAdditionalContainer(frrCtr).WithLocalVolume(configmapName, "/etc/frr")
-	}
-
-	By("Creating FRR pod in the test namespace")
-
-	frrPod, err := frrPod.WithPrivilegedFlag().CreateAndWaitUntilRunning(time.Minute)
-	Expect(err).ToNot(HaveOccurred(), "Failed to create FRR test pod")
-
-	return frrPod
 }
 
 // DefineFRRConfigWithStaticRoute defines BGP config file with static route and network.
@@ -348,9 +316,10 @@ func DefineFRRConfigWithStaticRoute(hubPodIPs, neighborsIPAddresses []string) st
 }
 
 // DefineBaseConfig defines minimal required FRR configuration.
-func DefineBaseConfig(daemonsConfig, vtyShConfig string) map[string]string {
+func DefineBaseConfig(daemonsConfig, frrConfig, vtyShConfig string) map[string]string {
 	configMapData := make(map[string]string)
 	configMapData["daemons"] = daemonsConfig
+	configMapData["frr.conf"] = frrConfig
 	configMapData["vtysh.conf"] = vtyShConfig
 
 	return configMapData
@@ -385,10 +354,9 @@ func buildRoutesMapWithSpecificRoutes(podList []*pod.Builder, nextHopList []stri
 	return routesMap
 }
 
-// SetStaticRoute could set or delete static route on all Speaker pods.
-func SetStaticRoute(frrPod *pod.Builder, action, destIP string, nextHopMap map[string]string) (string, error) {
+func setStaticRoute(frrPod *pod.Builder, action, destIP string, nextHopMap map[string]string) (string, error) {
 	buffer, err := frrPod.ExecCommand(
-		[]string{"ip", "route", action, destIP, "via", nextHopMap[frrPod.Definition.Spec.NodeName]}, "frr")
+		[]string{"ip", "route", action, destIP, "via", nextHopMap[frrPod.Definition.Spec.NodeName]})
 	if err != nil {
 		if strings.Contains(buffer.String(), "File exists") {
 			glog.V(90).Infof("Warning: Route to %s already exist", destIP)
@@ -408,75 +376,118 @@ func SetStaticRoute(frrPod *pod.Builder, action, destIP string, nextHopMap map[s
 	return buffer.String(), nil
 }
 
-func CreateMC(nodeRole string) (machineConfig []byte, err error) {
-	butaneConfigVar := createButaneConfig(nodeRole)
-	options := common.TranslateBytesOptions{}
-	machineConfig, _, err = butaneConfig.TranslateBytes(butaneConfigVar, options)
-	if err != nil {
-		return nil, fmt.Errorf("failed to covert the ButaneConfig to yaml %v: ", err)
-	}
-	//nodeName := "worker-0"
+// DefineBGPConfigMapWithStaticRouteAndNetwork defines BGP config file with static route and network.
+func defineConfigMapWithStaticRouteAndNetwork(hubPodIPs, nodeIPAddresses []string) string {
+	bgpConfig :=
+		fmt.Sprintf("ip route %s/32 %s\n", nodeIPAddresses[1], hubPodIPs[0]) +
+			fmt.Sprintf("ip route %s/32 %s\n!\n", nodeIPAddresses[0], hubPodIPs[1])
 
-	//// Ensure the artifacts directory exists
-	//if _, err := os.Stat(artifactsDir); os.IsNotExist(err) {
-	//	if err := os.MkdirAll(artifactsDir, 0755); err != nil {
-	//		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("failed to create artifacts directory: %s", artifactsDir))
-	//	}
-	//}
-	//// Write the machine config to a file
-	//filePath := filepath.Join(artifactsDir, "nftables-after-reboot-"+nodeName)
-	//if err := os.WriteFile(filePath, machineConfig, 0644); err != nil {
-	//	return nil, fmt.Errorf("failed to write machine config to file: %w", err)
-	//}
+	bgpConfig += "!\nline vty\n!\nend\n"
 
-	fmt.Println("machineConfig", string(machineConfig))
-
-	return machineConfig, nil
+	return bgpConfig
 }
 
-func createButaneConfig(nodeRole string) []byte {
-	butaneConfig := fmt.Sprintf(`variant: openshift
-version: %s
-metadata:
-  labels:
-    machineconfiguration.openshift.io/role: worker
-  name: "98-nftables-cnf-worker"
-systemd:
-  units:
-    - name: "nftables.service"
-      enabled: true
-      contents: |
-        [Unit]
-        Description=Netfilter Tables
-        Documentation=man:nft(8)
-        Wants=network-pre.target
-        Before=network-pre.target
-        [Service]
-        Type=oneshot
-        ProtectSystem=full
-        ProtectHome=true
-        ExecStart=/sbin/nft -f /etc/sysconfig/nftables.conf
-        ExecReload=/sbin/nft -f /etc/sysconfig/nftables.conf
-        ExecStop=/sbin/nft 'add table inet openshift_filter; delete table inet openshift_filter'
-        RemainAfterExit=yes
-        [Install]
-        WantedBy=multi-user.target
-storage:
-  files:
-    - path: /etc/sysconfig/nftables.conf
-      mode: 0600
-      overwrite: true
-      contents:
-        inline: |
-          table inet custom_table
-          delete table inet custom_table
-          table inet custom_table {
-          	chain custom_chain_INPUT {
-          		type filter hook input priority 1; policy accept;
-          		# Drop TCP port 8888 and log
-          		tcp dport 8888 log prefix "[USERFIREWALL] PACKET DROP: " drop
-          	}
-          }`, "4.17.0")
-	butaneConfig = strings.ReplaceAll(butaneConfig, "\t", "  ")
-	return []byte(butaneConfig)
+func createTestPodsOnWorkers(nodeName string, portNum int) *pod.Builder {
+	testPod, err := pod.NewBuilder(
+		APIClient, "nginxtpod-"+nodeName, tsparams.TestNamespaceName, NetConfig.CnfNetTestContainer).
+		DefineOnNode(nodeName).WithHostNetwork().WithHostPid(true).
+		RedefineDefaultCMD([]string{"/bin/bash", "-c", fmt.Sprintf("testcmd -interface br-ex -protocol tcp -port %d -listen", portNum)}).
+		WithPrivilegedFlag().CreateAndWaitUntilRunning(180 * time.Second)
+	Expect(err).ToNot(HaveOccurred(), "Failed to create nginx test pod")
+
+	return testPod
+}
+
+func validateTCPTraffic(clientPod *pod.Builder, destIPAddrs []string, portNum int) error {
+	for _, destIPAddr := range removePrefixFromIPList(destIPAddrs) {
+		command := fmt.Sprintf("testcmd -interface net1 -protocol tcp -port %d -server %s", portNum, destIPAddr)
+		_, err := clientPod.ExecCommand([]string{"bash", "-c", command}, "frr")
+		//Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Fail to run testcmd on %s command output: %s",
+		//	clientPod.Definition.Name, outPut.String()))
+		return err
+	}
+
+	return nil
+}
+
+func createMCAndWaitforMCPStable(fileContentString string) {
+	truePointer := true
+	stringgzip := "gzip"
+
+	mode := 384
+	fileContents := fileContentString
+	sysDContents := `
+            [Unit]  
+            Description=Netfilter Tables
+            Documentation=man:nft(8)
+            Wants=network-pre.target
+            Before=network-pre.target
+            [Service]
+            Type=oneshot
+            ProtectSystem=full
+            ProtectHome=true
+            ExecStart=/sbin/nft -f /etc/sysconfig/nftables.conf
+            ExecReload=/sbin/nft -f /etc/sysconfig/nftables.conf
+            ExecStop=/sbin/nft 'add table inet custom_table; delete table inet custom_table'
+            RemainAfterExit=yes
+            [Install]
+            WantedBy=multi-user.target`
+	ignitionConfig := ignition.Config{
+		Ignition: ignition.Ignition{
+			Version: "3.4.0",
+		},
+		Systemd: ignition.Systemd{
+			Units: []ignition.Unit{
+				{
+					Enabled:  &truePointer,
+					Name:     "nftables.service",
+					Contents: &sysDContents,
+				},
+			},
+		},
+		Storage: ignition.Storage{
+			Files: []ignition.File{
+				{
+					Node: ignition.Node{
+						Overwrite: &truePointer,
+						Path:      "/etc/sysconfig/nftables.conf",
+					},
+					FileEmbedded1: ignition.FileEmbedded1{
+						Contents: ignition.Resource{
+							Compression: &stringgzip,
+							Source:      &fileContents,
+						},
+						Mode: &mode,
+					},
+				},
+			},
+		},
+	}
+	finalIgnitionConfig, err := json.Marshal(ignitionConfig)
+	Expect(err).ToNot(HaveOccurred(), "Failed to serialize ignition config")
+	_, err = mco.NewMCBuilder(APIClient, "98-nftables-cnf-worker").
+		WithLabel("machineconfiguration.openshift.io/role", NetConfig.CnfMcpLabel).
+		WithRawConfig(finalIgnitionConfig).
+		Create()
+	Expect(err).ToNot(HaveOccurred(), "Failed to create RDMA machine config")
+
+	err = WaitForMcpStable(APIClient, 3*time.Minute, 30*time.Second, "workercnf")
+	Expect(err).ToNot(HaveOccurred(), "Failed to wait for MCP to be stable")
+}
+
+// WaitForMcpStable waits for the stability of the MCP with the given name.
+func WaitForMcpStable(apiClient *clients.Settings, waitingTime, stableDuration time.Duration, mcpName string) error {
+	mcp, err := mco.Pull(apiClient, mcpName)
+
+	if err != nil {
+		return fmt.Errorf("fail to pull mcp %s from cluster due to: %s", mcpName, err.Error())
+	}
+
+	err = mcp.WaitToBeStableFor(stableDuration, waitingTime)
+
+	if err != nil {
+		return fmt.Errorf("cluster is not stable: %s", err.Error())
+	}
+
+	return nil
 }

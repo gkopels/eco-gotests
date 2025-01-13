@@ -38,6 +38,7 @@ type NetworkConfig struct {
 	//nolint:lll
 	PrometheusOperatorNamespace string `yaml:"prometheus_operator_namespace" envconfig:"ECO_CNF_CORE_NET_PROMETHEUS_OPERATOR_NAMESPACE"`
 	MlbAddressPoolIP            string `envconfig:"ECO_CNF_CORE_NET_MLB_ADDR_LIST"`
+	SecurityIPAddList           string `envconfig:"ECO_CNF_CORE_NET_SECURITY_ADDR_LIST"`
 	SriovInterfaces             string `envconfig:"ECO_CNF_CORE_NET_SRIOV_INTERFACE_LIST"`
 	FrrImage                    string `yaml:"frr_image" envconfig:"ECO_CNF_CORE_NET_FRR_IMAGE"`
 	VLAN                        string `envconfig:"ECO_CNF_CORE_NET_VLAN"`
@@ -82,6 +83,24 @@ func (netConfig *NetworkConfig) GetMetalLbVirIP() ([]string, error) {
 	if len(envValue) < 2 {
 		return nil, fmt.Errorf(
 			"the number of virtial metalLb ip address is less than 2, check ECO_CNF_CORE_NET_MLB_ADDR_LIST env var")
+	}
+
+	for _, v := range envValue {
+		if net.ParseIP(v) == nil {
+			return nil, fmt.Errorf("the environment IP variable is not a valid IP")
+		}
+	}
+
+	return envValue, nil
+}
+
+// GetSecurityIPList IPv4 checks the security environmental variable and returns the list of give ip addresses.
+func (netConfig *NetworkConfig) GetSecurityIPList() ([]string, error) {
+	envValue := strings.Split(netConfig.SecurityIPAddList, ",")
+
+	if len(envValue) < 2 {
+		return nil, fmt.Errorf(
+			"the number of virtial security ip address is less than 2, check export ECO_CNF_CORE_NET_SECURITY_ADDR_LIST env var")
 	}
 
 	for _, v := range envValue {
