@@ -184,16 +184,15 @@ func (builder *BGPPeerBuilder) Create() (*BGPPeerBuilder, error) {
 		builder.Definition.Name, builder.Definition.Namespace,
 	)
 
-	var err error
 	if !builder.Exists() {
-		err = builder.apiClient.Create(context.TODO(), builder.Definition)
+		err := builder.apiClient.Create(context.TODO(), builder.Definition)
 
 		if err == nil {
 			builder.Object = builder.Definition
 		}
 	}
 
-	return builder, err
+	return builder, nil
 }
 
 // Delete removes BGPPeer object from a cluster.
@@ -484,6 +483,21 @@ func (builder *BGPPeerBuilder) WithEBGPMultiHop(eBGPMultiHop bool) *BGPPeerBuild
 		builder.Definition.Name, builder.Definition.Namespace, eBGPMultiHop)
 
 	builder.Definition.Spec.EBGPMultiHop = eBGPMultiHop
+
+	return builder
+}
+
+// WithGracefulRestart defines the EnableGracefulRestart bool flag placed in the BGPPeer spec.
+func (builder *BGPPeerBuilder) WithGracefulRestart(gracefulRestart bool) *BGPPeerBuilder {
+	if valid, _ := builder.validate(); !valid {
+		return builder
+	}
+
+	glog.V(100).Infof(
+		"Creating BGPPeer %s in namespace %s with this EnableGracefulRestart flag: %t",
+		builder.Definition.Name, builder.Definition.Namespace, gracefulRestart)
+
+	builder.Definition.Spec.EnableGracefulRestart = gracefulRestart
 
 	return builder
 }
