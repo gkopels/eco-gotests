@@ -12,7 +12,7 @@ import (
 	"github.com/openshift-kni/eco-goinfra/pkg/clients"
 	"github.com/openshift-kni/eco-goinfra/pkg/msg"
 
-	nmstateV1alpha1 "github.com/nmstate/kubernetes-nmstate/api/v1alpha1"
+	nmstateV1beta1 "github.com/nmstate/kubernetes-nmstate/api/v1beta1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	goclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -27,7 +27,7 @@ var (
 // StateBuilder provides struct for the NodeNetworkState object containing connection to the cluster.
 type StateBuilder struct {
 	// Created NodeNetworkState object on the cluster.
-	Object *nmstateV1alpha1.NodeNetworkState
+	Object *nmstateV1beta1.NodeNetworkState
 	// API client to interact with the cluster.
 	apiClient goclient.Client
 	// errorMsg is processed before NodeNetworkState object is created.
@@ -53,14 +53,14 @@ func (builder *StateBuilder) Exists() bool {
 }
 
 // Get returns NodeNetworkState object if found.
-func (builder *StateBuilder) Get() (*nmstateV1alpha1.NodeNetworkState, error) {
+func (builder *StateBuilder) Get() (*nmstateV1beta1.NodeNetworkState, error) {
 	if valid, err := builder.validate(); !valid {
 		return nil, err
 	}
 
 	glog.V(100).Infof("Collecting NodeNetworkState object %s", builder.Object.Name)
 
-	nodeNetworkState := &nmstateV1alpha1.NodeNetworkState{}
+	nodeNetworkState := &nmstateV1beta1.NodeNetworkState{}
 	err := builder.apiClient.Get(context.TODO(), goclient.ObjectKey{
 		Name: builder.Object.Name,
 	}, nodeNetworkState)
@@ -188,7 +188,7 @@ func PullNodeNetworkState(apiClient *clients.Settings, name string) (*StateBuild
 		return nil, fmt.Errorf("the apiClient cannot be nil")
 	}
 
-	err := apiClient.AttachScheme(nmstateV1alpha1.AddToScheme)
+	err := apiClient.AttachScheme(nmstateV1beta1.AddToScheme)
 	if err != nil {
 		glog.V(100).Infof("Failed to add nmstate v1 scheme to client schemes")
 
@@ -197,7 +197,7 @@ func PullNodeNetworkState(apiClient *clients.Settings, name string) (*StateBuild
 
 	stateBuilder := &StateBuilder{
 		apiClient: apiClient.Client,
-		Object: &nmstateV1alpha1.NodeNetworkState{
+		Object: &nmstateV1beta1.NodeNetworkState{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: name,
 			},
@@ -231,7 +231,7 @@ func (builder *StateBuilder) validate() (bool, error) {
 	if builder.Object == nil {
 		glog.V(100).Infof("The %s is undefined", resourceCRD)
 
-		return false, fmt.Errorf(msg.UndefinedCrdObjectErrString(resourceCRD))
+		return false, fmt.Errorf("%s", msg.UndefinedCrdObjectErrString(resourceCRD))
 	}
 
 	if builder.apiClient == nil {
@@ -243,7 +243,7 @@ func (builder *StateBuilder) validate() (bool, error) {
 	if builder.errorMsg != "" {
 		glog.V(100).Infof("The %s builder has error message: %s", resourceCRD, builder.errorMsg)
 
-		return false, fmt.Errorf(builder.errorMsg)
+		return false, fmt.Errorf("%s", builder.errorMsg)
 	}
 
 	return true, nil

@@ -520,6 +520,7 @@ github.com/nmstate/kubernetes-nmstate/api/names
 github.com/nmstate/kubernetes-nmstate/api/shared
 github.com/nmstate/kubernetes-nmstate/api/v1
 github.com/nmstate/kubernetes-nmstate/api/v1alpha1
+github.com/nmstate/kubernetes-nmstate/api/v1beta1
 # github.com/nutanix-cloud-native/prism-go-client v0.3.4
 ## explicit; go 1.16
 github.com/nutanix-cloud-native/prism-go-client
@@ -578,8 +579,8 @@ github.com/opencontainers/runtime-spec/specs-go
 ## explicit; go 1.22.0
 github.com/openshift-kni/cluster-group-upgrades-operator/pkg/api/clustergroupupgrades
 github.com/openshift-kni/cluster-group-upgrades-operator/pkg/api/clustergroupupgrades/v1alpha1
-# github.com/openshift-kni/eco-goinfra v0.0.0-20250225140906-a4a0e908a154
-## explicit; go 1.23.6
+# github.com/openshift-kni/eco-goinfra v0.0.0-20250428162343-87063feca2e7
+## explicit; go 1.24.2
 github.com/openshift-kni/eco-goinfra/pkg/apiservers
 github.com/openshift-kni/eco-goinfra/pkg/argocd
 github.com/openshift-kni/eco-goinfra/pkg/assisted
@@ -687,6 +688,9 @@ github.com/openshift-kni/eco-goinfra/pkg/schemes/imagebasedinstall/hive/api/v1/o
 github.com/openshift-kni/eco-goinfra/pkg/schemes/imagebasedinstall/hive/api/v1/ovirt
 github.com/openshift-kni/eco-goinfra/pkg/schemes/imagebasedinstall/hive/api/v1/vsphere
 github.com/openshift-kni/eco-goinfra/pkg/schemes/imagebasedinstall/hive/scheme
+github.com/openshift-kni/eco-goinfra/pkg/schemes/kmm-hub/v1beta1
+github.com/openshift-kni/eco-goinfra/pkg/schemes/kmm/v1beta1
+github.com/openshift-kni/eco-goinfra/pkg/schemes/kmm/v1beta2
 github.com/openshift-kni/eco-goinfra/pkg/schemes/metallb/frrtypes
 github.com/openshift-kni/eco-goinfra/pkg/schemes/metallb/mlboperator
 github.com/openshift-kni/eco-goinfra/pkg/schemes/metallb/mlbtypes
@@ -890,7 +894,7 @@ github.com/openshift/cluster-logging-operator/internal/utils/sets
 # github.com/openshift/cluster-nfd-operator v0.0.0-20250116132220-e601a6278a42
 ## explicit; go 1.22
 github.com/openshift/cluster-nfd-operator/api/v1
-# github.com/openshift/cluster-node-tuning-operator v0.0.0-20250116110730-90fc6ab88c08
+# github.com/openshift/cluster-node-tuning-operator v0.0.0-20250408112936-4f58be155c79
 ## explicit; go 1.22.0
 github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v1
 github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2

@@ -11,7 +11,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	mcv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
+	mcv1 "github.com/openshift/api/machineconfiguration/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -322,7 +322,7 @@ func (builder *MCPBuilder) WaitToBeStableFor(stableDuration time.Duration, timeo
 						builder.Object.Status.DegradedMachineCount != 0 {
 						glog.V(100).Infof("MachineConfigPool: %v degraded and has a mismatch in "+
 							"machineCount: %v "+"vs machineCountUpdated: "+"%v vs readyMachineCount: %v and "+
-							"degradedMachineCount is : %v \n", builder.Object.ObjectMeta.Name,
+							"degradedMachineCount is : %v \n", builder.Object.Name,
 							builder.Object.Status.MachineCount, builder.Object.Status.UpdatedMachineCount,
 							builder.Object.Status.ReadyMachineCount, builder.Object.Status.DegradedMachineCount)
 
@@ -420,7 +420,7 @@ func (builder *MCPBuilder) validate() (bool, error) {
 	if builder.Definition == nil {
 		glog.V(100).Infof("The %s is undefined", resourceCRD)
 
-		return false, fmt.Errorf(msg.UndefinedCrdObjectErrString(resourceCRD))
+		return false, fmt.Errorf("%s", msg.UndefinedCrdObjectErrString(resourceCRD))
 	}
 
 	if builder.apiClient == nil {
@@ -432,7 +432,7 @@ func (builder *MCPBuilder) validate() (bool, error) {
 	if builder.errorMsg != "" {
 		glog.V(100).Infof("The %s builder has error message: %s", resourceCRD, builder.errorMsg)
 
-		return false, fmt.Errorf(builder.errorMsg)
+		return false, fmt.Errorf("%s", builder.errorMsg)
 	}
 
 	return true, nil

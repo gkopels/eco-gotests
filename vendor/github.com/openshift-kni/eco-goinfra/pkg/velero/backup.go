@@ -139,11 +139,11 @@ func (builder *BackupBuilder) WithStorageLocation(location string) *BackupBuilde
 		return builder
 	}
 
-	if builder.Definition.ObjectMeta.Labels == nil {
-		builder.Definition.ObjectMeta.Labels = make(map[string]string)
+	if builder.Definition.Labels == nil {
+		builder.Definition.Labels = make(map[string]string)
 	}
 
-	builder.Definition.ObjectMeta.Labels["velero.io/storage-location"] = location
+	builder.Definition.Labels["velero.io/storage-location"] = location
 
 	return builder
 }
@@ -405,7 +405,7 @@ func (builder *BackupBuilder) validate() (bool, error) {
 	if builder.errorMsg != "" {
 		glog.V(100).Infof("The %s builder has error message: %s", resourceCRD, builder.errorMsg)
 
-		return false, fmt.Errorf(builder.errorMsg)
+		return false, fmt.Errorf("%s", builder.errorMsg)
 	}
 
 	return true, nil

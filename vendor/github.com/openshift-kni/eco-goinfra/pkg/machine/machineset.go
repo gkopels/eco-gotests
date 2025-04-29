@@ -495,23 +495,23 @@ func createNewWorkerMachineSetFromCopy(
 	}
 
 	glog.V(100).Infof("Renaming copied SetBuilder to: %s",
-		copiedSetBuilder.Definition.ObjectMeta.Name)
+		copiedSetBuilder.Definition.Name)
 
 	// replace dots in name with dashes.  Cannot have dots or underscores in machineSet name, must also be lower case
-	copiedSetBuilder.Definition.ObjectMeta.Name = fmt.Sprintf("%v-%v",
+	copiedSetBuilder.Definition.Name = fmt.Sprintf("%v-%v",
 		copiedSetBuilder.Definition.Name,
 		strings.ToLower(regexp.MustCompile(`[\.|\_]`).ReplaceAllString(instanceType, "-")))
 
 	glog.V(100).Infof("Updating copied MachineSet name in metadata, selector and template parameters")
 
-	copiedSetBuilder.Definition.ObjectMeta.UID = ""
-	copiedSetBuilder.Definition.ObjectMeta.ResourceVersion = ""
+	copiedSetBuilder.Definition.UID = ""
+	copiedSetBuilder.Definition.ResourceVersion = ""
 
 	// change spec labels
 	copiedSetBuilder.Definition.Spec.Selector.MatchLabels["machine.openshift.io/cluster-api-machineset"] =
-		copiedSetBuilder.Definition.ObjectMeta.Name
-	copiedSetBuilder.Definition.Spec.Template.ObjectMeta.Labels["machine.openshift.io/cluster-api-machineset"] =
-		copiedSetBuilder.Definition.ObjectMeta.Name
+		copiedSetBuilder.Definition.Name
+	copiedSetBuilder.Definition.Spec.Template.Labels["machine.openshift.io/cluster-api-machineset"] =
+		copiedSetBuilder.Definition.Name
 
 	glog.V(100).Infof("Updating copied MachineSet replicas value to: %v", replicas)
 	copiedSetBuilder.Definition.Spec.Replicas = &replicas
@@ -587,7 +587,7 @@ func (builder *SetBuilder) validate() (bool, error) {
 	if builder.Definition == nil {
 		glog.V(100).Infof("The %s is undefined", resourceCRD)
 
-		return false, fmt.Errorf(msg.UndefinedCrdObjectErrString(resourceCRD))
+		return false, fmt.Errorf("%s", msg.UndefinedCrdObjectErrString(resourceCRD))
 	}
 
 	if builder.apiClient == nil {
@@ -599,7 +599,7 @@ func (builder *SetBuilder) validate() (bool, error) {
 	if builder.errorMsg != "" {
 		glog.V(100).Infof("The %s builder has error message: %s", resourceCRD, builder.errorMsg)
 
-		return false, fmt.Errorf(builder.errorMsg)
+		return false, fmt.Errorf("%s", builder.errorMsg)
 	}
 
 	return true, nil

@@ -7,7 +7,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/openshift-kni/eco-goinfra/pkg/clients"
 	"github.com/openshift-kni/eco-goinfra/pkg/msg"
-	moduleV1Beta1 "github.com/rh-ecosystem-edge/kernel-module-management/api/v1beta1"
+	moduleV1Beta1 "github.com/openshift-kni/eco-goinfra/pkg/schemes/kmm/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -175,6 +175,46 @@ func (builder *ModuleBuilder) WithDevicePluginVolume(name string, configMapName 
 			},
 		},
 	})
+
+	return builder
+}
+
+// WithToleration adds the specified toleration to the Module.
+func (builder *ModuleBuilder) WithToleration(key, operator, value, effect string,
+	seconds *int64) *ModuleBuilder {
+	if valid, _ := builder.validate(); !valid {
+		return builder
+	}
+
+	if key == "" {
+		builder.errorMsg = "cannot redefine with empty 'key' value"
+
+		return builder
+	}
+
+	if operator == "" {
+		builder.errorMsg = "cannot redefine with empty 'operator' value"
+
+		return builder
+	}
+
+	if effect == "" {
+		builder.errorMsg = "cannot redefine with empty 'effect' value"
+
+		return builder
+	}
+
+	glog.V(100).Infof(
+		"Appending toleration with key: %s, operator: %s, value: %s, effect: %s and seconds: %s",
+		key, operator, value, effect, seconds)
+
+	builder.Definition.Spec.Tolerations = append(builder.Definition.Spec.Tolerations, []corev1.Toleration{{
+		Key:               key,
+		Effect:            corev1.TaintEffect(effect),
+		Operator:          corev1.TolerationOperator(operator),
+		Value:             value,
+		TolerationSeconds: seconds,
+	}}...)
 
 	return builder
 }
@@ -454,7 +494,7 @@ func (builder *ModuleBuilder) validate() (bool, error) {
 	if builder.Definition == nil {
 		glog.V(100).Infof("The %s is undefined", resourceCRD)
 
-		return false, fmt.Errorf(msg.UndefinedCrdObjectErrString(resourceCRD))
+		return false, fmt.Errorf("%s", msg.UndefinedCrdObjectErrString(resourceCRD))
 	}
 
 	if builder.apiClient == nil {
@@ -466,7 +506,7 @@ func (builder *ModuleBuilder) validate() (bool, error) {
 	if builder.errorMsg != "" {
 		glog.V(100).Infof("The %s builder has error message: %s", resourceCRD, builder.errorMsg)
 
-		return false, fmt.Errorf(builder.errorMsg)
+		return false, fmt.Errorf("%s", builder.errorMsg)
 	}
 
 	return true, nil

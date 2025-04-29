@@ -33,16 +33,19 @@ type Builder struct {
 
 // Pull retrieves an existing imageRegistry object from the cluster.
 func Pull(apiClient *clients.Settings, imageRegistryObjName string) (*Builder, error) {
+	glog.V(100).Infof("Pulling existing imageRegistry Config %s", imageRegistryObjName)
+
 	if apiClient == nil {
 		glog.V(100).Infof("The apiClient is empty")
 
 		return nil, fmt.Errorf("imageRegistry Config 'apiClient' cannot be empty")
 	}
 
-	if imageRegistryObjName == "" {
-		glog.V(100).Infof("The name of the imageRegistry is empty")
+	err := apiClient.AttachScheme(imageregistryv1.Install)
+	if err != nil {
+		glog.V(100).Infof("Failed to attach imageregistry v1 scheme: %v", err)
 
-		return nil, fmt.Errorf("imageRegistry 'imageRegistryObjName' cannot be empty")
+		return nil, err
 	}
 
 	glog.V(100).Infof(
@@ -55,6 +58,12 @@ func Pull(apiClient *clients.Settings, imageRegistryObjName string) (*Builder, e
 				Name: imageRegistryObjName,
 			},
 		},
+	}
+
+	if imageRegistryObjName == "" {
+		glog.V(100).Infof("The name of the imageRegistry is empty")
+
+		return nil, fmt.Errorf("imageRegistry 'imageRegistryObjName' cannot be empty")
 	}
 
 	if !builder.Exists() {
@@ -80,7 +89,7 @@ func (builder *Builder) Get() (*imageregistryv1.Config, error) {
 	}, imageRegistry)
 
 	if err != nil {
-		glog.V(100).Infof("ImageRegistry object %s does not exist", builder.Definition.Name)
+		glog.V(100).Infof("Failed to get ImageRegistry object %s: %v", builder.Definition.Name, err)
 
 		return nil, err
 	}
@@ -249,7 +258,7 @@ func (builder *Builder) validate() (bool, error) {
 	if builder.Definition == nil {
 		glog.V(100).Infof("The %s is undefined", resourceCRD)
 
-		return false, fmt.Errorf(msg.UndefinedCrdObjectErrString(resourceCRD))
+		return false, fmt.Errorf("%s", msg.UndefinedCrdObjectErrString(resourceCRD))
 	}
 
 	if builder.apiClient == nil {
@@ -261,7 +270,7 @@ func (builder *Builder) validate() (bool, error) {
 	if builder.errorMsg != "" {
 		glog.V(100).Infof("The %s builder has error message: %s", resourceCRD, builder.errorMsg)
 
-		return false, fmt.Errorf(builder.errorMsg)
+		return false, fmt.Errorf("%s", builder.errorMsg)
 	}
 
 	return true, nil

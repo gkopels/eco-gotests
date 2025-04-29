@@ -206,7 +206,7 @@ func (builder *Builder) WithSecondaryNetwork(networks []*multus.NetworkSelection
 		return builder
 	}
 
-	builder.Definition.Spec.Template.ObjectMeta.Annotations = map[string]string{
+	builder.Definition.Spec.Template.Annotations = map[string]string{
 		"k8s.v1.cni.cncf.io/networks": string(netAnnotation)}
 
 	return builder
@@ -484,6 +484,48 @@ func (builder *Builder) Delete() error {
 	return nil
 }
 
+// DeleteGraceful removes a deployment while waiting for specified duration(in seconds)
+// the object should be deleted.
+func (builder *Builder) DeleteGraceful(gracePeriod *int64) error {
+	if valid, err := builder.validate(); !valid {
+		return err
+	}
+
+	switch {
+	case gracePeriod == nil:
+		glog.V(100).Infof("gracePeriod cannot be nil")
+
+		return fmt.Errorf("gracePeriod cannot be nil")
+	case *gracePeriod < int64(0):
+		glog.V(100).Infof("gracePeriod(%v) must be non-negative integer", gracePeriod)
+
+		return fmt.Errorf("gracePeriod must be non-negative integer")
+	}
+
+	glog.V(100).Infof("Deleting deployment %s in namespace %s with %v seconds grace period",
+		builder.Definition.Name, builder.Definition.Namespace, *gracePeriod)
+
+	if !builder.Exists() {
+		glog.V(100).Infof("Deployment %s in namespace %s does not exist",
+			builder.Definition.Name, builder.Definition.Namespace)
+
+		builder.Object = nil
+
+		return nil
+	}
+
+	err := builder.apiClient.Deployments(builder.Definition.Namespace).Delete(
+		context.TODO(), builder.Definition.Name, metav1.DeleteOptions{GracePeriodSeconds: gracePeriod})
+
+	if err != nil {
+		return err
+	}
+
+	builder.Object = nil
+
+	return nil
+}
+
 // CreateAndWaitUntilReady creates a deployment in the cluster and waits until the deployment is available.
 func (builder *Builder) CreateAndWaitUntilReady(timeout time.Duration) (*Builder, error) {
 	if valid, err := builder.validate(); !valid {
@@ -658,7 +700,7 @@ func (builder *Builder) validate() (bool, error) {
 	if builder.Definition == nil {
 		glog.V(100).Infof("The %s is undefined", resourceCRD)
 
-		return false, fmt.Errorf(msg.UndefinedCrdObjectErrString(resourceCRD))
+		return false, fmt.Errorf("%s", msg.UndefinedCrdObjectErrString(resourceCRD))
 	}
 
 	if builder.apiClient == nil {
@@ -670,7 +712,7 @@ func (builder *Builder) validate() (bool, error) {
 	if builder.errorMsg != "" {
 		glog.V(100).Infof("The %s builder has error message: %s", resourceCRD, builder.errorMsg)
 
-		return false, fmt.Errorf(builder.errorMsg)
+		return false, fmt.Errorf("%s", builder.errorMsg)
 	}
 
 	return true, nil
