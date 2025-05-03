@@ -116,6 +116,11 @@ var _ = Describe("MetalLB NodeSelector", Ordered, Label(tsparams.LabelBGPTestCas
 				Expect(err).ToNot(HaveOccurred(), "Failed to collect bgp community status")
 				Expect(len(bgpStatus.Routes)).To(Equal(2))
 			})
+
+		It("Update the node selector option with a label that does not exist",
+			reportxml.ID("61336"), func() {
+
+			})
 	})
 
 	Context("Dual IPAddressPools", func() {
