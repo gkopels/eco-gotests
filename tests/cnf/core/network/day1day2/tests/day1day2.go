@@ -15,9 +15,9 @@ import (
 	"github.com/openshift-kni/eco-goinfra/pkg/reportxml"
 
 	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/day1day2/internal/day1day2env"
-	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/day1day2/internal/juniper"
 	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/day1day2/internal/tsparams"
 	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/internal/cmd"
+	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/internal/juniper"
 	. "github.com/openshift-kni/eco-gotests/tests/cnf/core/network/internal/netinittools"
 	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/internal/netnmstate"
 	"github.com/openshift-kni/eco-gotests/tests/cnf/core/network/internal/netparam"
@@ -203,15 +203,6 @@ func recoverSwitchConfiguration(juniperSession *juniper.JunosSession, switchInte
 	Expect(err).ToNot(HaveOccurred(), "Failed to delete switch LAG interfaces")
 }
 
-func waitForSwitchInterfaceUp(juniperSession *juniper.JunosSession, switchLagName string) {
-	Eventually(func() bool {
-		isBondInterfaceUp, err := juniper.IsSwitchInterfaceUp(juniperSession, switchLagName)
-		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Failed to get status of switch LAG interface %s", switchLagName))
-
-		return isBondInterfaceUp
-	}, 1*time.Minute, 5*time.Second).Should(BeTrue(), "Bond interface is not Up on the switch")
-}
-
 func testBondFailOver(juniperSession *juniper.JunosSession, switchInterfaces []string) {
 	By("Verifying workers are still available over the bond interface")
 
@@ -236,7 +227,12 @@ func testBondFailOver(juniperSession *juniper.JunosSession, switchInterfaces []s
 	err = juniper.DisableSwitchInterface(juniperSession, switchInterfaces[1])
 	Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Failed to shutdown switch interface %s", switchInterfaces[1]))
 
-	waitForSwitchInterfaceUp(juniperSession, switchInterfaces[0])
+	By("Verify that the switch interface is UP")
+	Eventually(func() bool {
+		isUp, err := juniper.WaitForSwitchInterfaceUp(juniperSession, switchInterfaces[0])
+		Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Failed to get switch interface status for %s", switchInterfaces[0]))
+		return isUp
+	}, 1*time.Minute, 5*time.Second).Should(BeTrue(), fmt.Sprintf("Bond interface %s did not come up on the switch", switchInterfaces[0]))
 
 	By("Verifying workers are still available over the bond interface")
 
