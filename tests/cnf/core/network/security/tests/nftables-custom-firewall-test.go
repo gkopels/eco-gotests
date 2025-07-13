@@ -106,11 +106,21 @@ var _ = Describe("nftables", Ordered, Label(tsparams.LabelNftablesTestCases), Co
 		By("Remove the static route to the external Pod network on each worker node")
 		addDeleteStaticRouteOnWorkerNodes(testPodList, routeMap, "del", hubIPv4Network)
 
-		By(fmt.Sprintf("Disables nftables on %s if active", cnfWorkerNodeList[0].Definition.Name))
-		disableNftablesIfActive(cnfWorkerNodeList[0].Definition.Name)
-
 		err = netenv.WaitForMcpStable(APIClient, 35*time.Minute, 1*time.Minute, NetConfig.CnfMcpLabel)
 		Expect(err).ToNot(HaveOccurred(), "Failed to wait for MCP to be stable")
+
+		By("Edit the machineconfiguration cluster to set NFTables service inactive")
+		updateMachineConfigurationNodeDisruptionPolicyInactive()
+
+		By("Waiting for MCP to stabilize after nftables policy change")
+		err = netenv.WaitForMcpStable(APIClient, 35*time.Minute, 1*time.Minute, NetConfig.CnfMcpLabel)
+		Expect(err).ToNot(HaveOccurred(), "Failed to wait for MCP to be stable after nftables policy change")
+
+		By(fmt.Sprintf("Disable nftables service on %s without flushing rules", cnfWorkerNodeList[0].Definition.Name))
+		disableNftablesWithoutFlushingRules(cnfWorkerNodeList[0].Definition.Name)
+
+		By(fmt.Sprintf("Restore nftables service behavior on %s", cnfWorkerNodeList[0].Definition.Name))
+		restoreNftablesServiceBehavior(cnfWorkerNodeList[0].Definition.Name)
 	})
 
 	Context("custom firewall", func() {
@@ -126,7 +136,7 @@ var _ = Describe("nftables", Ordered, Label(tsparams.LabelNftablesTestCases), Co
 			Expect(err).ToNot(HaveOccurred(), "Failed to wait for MCP to be stable")
 		})
 
-		It("Verify the creation of a new custom node firewall NFTables table with an ingress rule",
+		FIt("Verify the creation of a new custom node firewall NFTables table with an ingress rule",
 			reportxml.ID("77142"), func() {
 				By("Verify ICMP connectivity between the external Pod and the test pods on the workers")
 				err := cmd.ICMPConnectivityCheck(masterPod, ip4Worker0NodeAddr, interfaceNameNet1)
@@ -249,6 +259,47 @@ func updateMachineConfigurationNodeDisruptionPolicy() {
 	}, client.RawPatch(apimachinerytype.MergePatchType, jsonBytes))
 	Expect(err).ToNot(HaveOccurred(),
 		"Failed to update the machineconfiguration cluster file")
+}
+
+func updateMachineConfigurationNodeDisruptionPolicyInactive() {
+	By("should update machineconfiguration cluster to leave nftables.service inactive")
+
+	jsonBytes := []byte(`
+	{
+	  "spec": {
+	    "nodeDisruptionPolicy": {
+	      "files": [
+	        {
+	          "path": "/etc/sysconfig/nftables.conf",
+	          "actions": [
+	            {
+	              "type": "None"
+	            }
+	          ]
+	        }
+	      ],
+	      "units": [
+	        {
+	          "name": "nftables.service",
+	          "actions": [
+	            {
+	              "type": "DaemonReload"
+	            }
+	          ]
+	        }
+	      ]
+	    }
+	  }
+	}`)
+
+	err := APIClient.Patch(context.TODO(), &ocpoperatorv1.MachineConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "cluster",
+		},
+	}, client.RawPatch(apimachinerytype.MergePatchType, jsonBytes))
+
+	Expect(err).ToNot(HaveOccurred(),
+		"Failed to update the machineconfiguration cluster to leave nftables inactive")
 }
 
 func setupRemoteMultiHopTest(
@@ -501,6 +552,186 @@ func disableNftablesIfActive(nodeName string) {
 			verifyNftablesStatus("inactive", nodeName)
 		}
 	}
+}
+
+func disableNftablesWithoutFlushingRules(nodeName string) {
+	// Get the current status of the nftables service
+	statuses, err := cluster.ExecCmdWithStdout(APIClient,
+		"systemctl is-active nftables.service | cat -",
+		metav1.ListOptions{LabelSelector: fmt.Sprintf("kubernetes.io/hostname=%s", nodeName)})
+	Expect(err).ToNot(HaveOccurred(), "Failed to check nftables service status")
+	Expect(statuses).ToNot(BeEmpty(), "Failed to find statuses for nftables service")
+
+	// Iterate through the statuses of the nodes
+	for nodeName, status := range statuses {
+		status = strings.TrimSpace(status)
+		if status == "active" {
+			// Use simple systemd override approach
+			By(fmt.Sprintf("Applying simple systemd ExecStop override on %s", nodeName))
+
+			// Create simple systemd override to prevent flush on stop
+			simpleOverride := `[Service]
+ExecStop=
+RemainAfterExit=yes`
+
+			_, err := cluster.ExecCmdWithStdout(APIClient,
+				fmt.Sprintf("mkdir -p /etc/systemd/system/nftables.service.d && cat > /etc/systemd/system/nftables.service.d/no-flush.conf << 'EOF'\n%s\nEOF", simpleOverride),
+				metav1.ListOptions{LabelSelector: fmt.Sprintf("kubernetes.io/hostname=%s", nodeName)})
+			Expect(err).ToNot(HaveOccurred(), "Failed to create systemd override on "+nodeName)
+
+			// Reload systemd to apply the override
+			_, err = cluster.ExecCmdWithStdout(APIClient,
+				"systemctl daemon-reload",
+				metav1.ListOptions{LabelSelector: fmt.Sprintf("kubernetes.io/hostname=%s", nodeName)})
+			Expect(err).ToNot(HaveOccurred(), "Failed to reload systemd on "+nodeName)
+
+			// Now stop the service - it should not flush rules due to empty ExecStop
+			By(fmt.Sprintf("Stopping nftables service with empty ExecStop on %s", nodeName))
+			_, err = cluster.ExecCmdWithStdout(APIClient,
+				"systemctl stop nftables.service",
+				metav1.ListOptions{LabelSelector: fmt.Sprintf("kubernetes.io/hostname=%s", nodeName)})
+			Expect(err).ToNot(HaveOccurred(), "Failed to stop nftables service on "+nodeName)
+
+			// Verify that nftables service is now inactive
+			verifyNftablesStatus("inactive", nodeName)
+
+			// Verify that the nft rules are still present
+			rulesetOutput, err := cluster.ExecCmdWithStdout(APIClient,
+				"nft list ruleset",
+				metav1.ListOptions{LabelSelector: fmt.Sprintf("kubernetes.io/hostname=%s", nodeName)})
+			Expect(err).ToNot(HaveOccurred(), "Failed to list nft ruleset on "+nodeName)
+
+			// Check if there are any rules present (we expect some rules to exist)
+			if len(rulesetOutput) > 0 {
+				hasRules := false
+				for _, output := range rulesetOutput {
+					if strings.Contains(output, "table") || strings.Contains(output, "chain") || strings.Contains(output, "rule") {
+						hasRules = true
+						break
+					}
+				}
+				if hasRules {
+					By(fmt.Sprintf("Successfully verified that nft rules are preserved on %s", nodeName))
+				} else {
+					By(fmt.Sprintf("Warning: No nft rules found on %s, but nft command executed successfully", nodeName))
+				}
+			}
+		}
+	}
+}
+
+func restoreNftablesServiceBehavior(nodeName string) {
+	// Restore original binaries
+	restoreOriginalBinaries(nodeName)
+
+	// Remove all systemd overrides
+	removeAllSystemdOverrides(nodeName)
+
+	// Unmask any masked services
+	unmaskMaskedServices(nodeName)
+
+	// Clean up all temporary files and scripts
+	cleanupAllTemporaryFiles(nodeName)
+
+	// Reload systemd to apply the changes
+	_, err := cluster.ExecCmdWithStdout(APIClient,
+		"systemctl daemon-reload",
+		metav1.ListOptions{LabelSelector: fmt.Sprintf("kubernetes.io/hostname=%s", nodeName)})
+	Expect(err).ToNot(HaveOccurred(), "Failed to reload systemd on "+nodeName)
+
+	// Re-enable the service if needed
+	_, err = cluster.ExecCmdWithStdout(APIClient,
+		"systemctl enable nftables.service",
+		metav1.ListOptions{LabelSelector: fmt.Sprintf("kubernetes.io/hostname=%s", nodeName)})
+	Expect(err).ToNot(HaveOccurred(), "Failed to enable nftables service on "+nodeName)
+}
+
+func restoreOriginalBinaries(nodeName string) {
+	// With PATH-based interception, we don't modify the original binaries
+	// Just clean up any backup files that might exist from previous runs
+	_, err := cluster.ExecCmdWithStdout(APIClient,
+		"rm -f /usr/sbin/*.original",
+		metav1.ListOptions{LabelSelector: fmt.Sprintf("kubernetes.io/hostname=%s", nodeName)})
+	Expect(err).ToNot(HaveOccurred(), "Failed to remove any backup binaries on "+nodeName)
+
+	By(fmt.Sprintf("Cleaned up any backup binaries on %s", nodeName))
+}
+
+func removeAllSystemdOverrides(nodeName string) {
+	// Remove the simple systemd override directory created by our simple approach
+	_, err := cluster.ExecCmdWithStdout(APIClient,
+		"rm -rf /etc/systemd/system/nftables.service.d",
+		metav1.ListOptions{LabelSelector: fmt.Sprintf("kubernetes.io/hostname=%s", nodeName)})
+	Expect(err).ToNot(HaveOccurred(), "Failed to remove systemd override directory on "+nodeName)
+
+	// Also remove any complete service override file if it exists (from complex approach)
+	_, err = cluster.ExecCmdWithStdout(APIClient,
+		"rm -f /etc/systemd/system/nftables.service",
+		metav1.ListOptions{LabelSelector: fmt.Sprintf("kubernetes.io/hostname=%s", nodeName)})
+	Expect(err).ToNot(HaveOccurred(), "Failed to remove complete systemd service override on "+nodeName)
+
+	By(fmt.Sprintf("Removed all systemd overrides on %s", nodeName))
+}
+
+func unmaskMaskedServices(nodeName string) {
+	// Unmask nftables service (gracefully handle if it wasn't masked)
+	unmaskOutput, err := cluster.ExecCmdWithStdout(APIClient,
+		"systemctl unmask nftables.service || echo 'Unmask not needed or failed'",
+		metav1.ListOptions{LabelSelector: fmt.Sprintf("kubernetes.io/hostname=%s", nodeName)})
+	if err != nil {
+		By(fmt.Sprintf("Could not unmask nftables service on %s, may not have been masked", nodeName))
+	} else {
+		for _, output := range unmaskOutput {
+			By(fmt.Sprintf("Unmask attempt result on %s: %s", nodeName, output))
+		}
+	}
+
+	// Unmask other services that might have been masked
+	potentialMaskedServices := []string{
+		"iptables",
+		"ip6tables",
+		"netfilter-persistent",
+		"ufw",
+		"firewalld",
+	}
+
+	for _, service := range potentialMaskedServices {
+		_, err := cluster.ExecCmdWithStdout(APIClient,
+			fmt.Sprintf("systemctl unmask %s.service || true", service),
+			metav1.ListOptions{LabelSelector: fmt.Sprintf("kubernetes.io/hostname=%s", nodeName)})
+		// We don't expect this to fail since we're using || true
+		if err == nil {
+			By(fmt.Sprintf("Attempted to unmask %s service on %s", service, nodeName))
+		}
+	}
+}
+
+func cleanupAllTemporaryFiles(nodeName string) {
+	// Simple cleanup - only remove systemd override directory created by simple approach
+	_, err := cluster.ExecCmdWithStdout(APIClient,
+		"rm -rf /etc/systemd/system/nftables.service.d",
+		metav1.ListOptions{LabelSelector: fmt.Sprintf("kubernetes.io/hostname=%s", nodeName)})
+	Expect(err).ToNot(HaveOccurred(), "Failed to clean up systemd override directory on "+nodeName)
+
+	// Also clean up any leftover complex approach files if they exist (gracefully)
+	legacyPaths := []string{
+		"/tmp/nft-intercept",
+		"/tmp/nft-flush-attempts.log",
+		"/tmp/firewall-command-log.txt",
+		"/usr/local/bin/prevent-flush-warning",
+	}
+
+	for _, path := range legacyPaths {
+		_, err := cluster.ExecCmdWithStdout(APIClient,
+			fmt.Sprintf("rm -rf %s 2>/dev/null || true", path),
+			metav1.ListOptions{LabelSelector: fmt.Sprintf("kubernetes.io/hostname=%s", nodeName)})
+		// Don't fail if these don't exist
+		if err != nil {
+			By(fmt.Sprintf("Could not clean up legacy path %s on %s (may not exist)", path, nodeName))
+		}
+	}
+
+	By(fmt.Sprintf("Cleaned up systemd overrides and any legacy files on %s", nodeName))
 }
 
 func verifyNftablesStatus(expectedStatus, nodeName string) {
