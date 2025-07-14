@@ -22,4 +22,6 @@ const (
 	// LabelWebhookInjector represents sriov webhook injector match conditions tests that can be used
 	// for test cases selection.
 	LabelWebhookInjector = "webhook-resource-injector"
+	// LabelPFStatusRelayTestCases represents PF status relay label that can be used for test cases selection.
+	LabelPFStatusRelayTestCases = "pfstatusrelay"
 )
