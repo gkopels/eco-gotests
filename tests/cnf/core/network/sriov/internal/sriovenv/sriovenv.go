@@ -388,3 +388,74 @@ func DefinePod(name, role, ifName, worker string, secondaryInterface bool) *pod.
 
 	return podbuild
 }
+
+// DefineCreateSriovNetPolices defines and creates SR-IOV network policies with appropriate device types.
+// Returns error if policy creation fails.
+func DefineCreateSriovNetPolices(vfioPCIName, vfioPCIResName, sriovInterface,
+	sriovDeviceID, reqDriver string) error {
+	glog.V(90).Infof("Define and create sriov network policy using worker node label with netDevice type %s", reqDriver)
+
+	sriovPolicy := sriov.NewPolicyBuilder(
+		APIClient,
+		vfioPCIName,
+		NetConfig.SriovOperatorNamespace,
+		vfioPCIResName,
+		5,
+		[]string{fmt.Sprintf("%s#0-4", sriovInterface)},
+		NetConfig.WorkerLabelMap).WithVhostNet(true)
+
+	var err error
+	switch reqDriver {
+	case "vfio-pci":
+		if sriovDeviceID == netparam.MlxDeviceID || sriovDeviceID == netparam.MlxBFDeviceID {
+			_, err = sriovPolicy.WithRDMA(true).WithDevType("netdevice").Create()
+			if err != nil {
+				return fmt.Errorf("failed to create Mellanox sriovnetwork policy %s: %w", vfioPCIName, err)
+			}
+		} else {
+			_, err = sriovPolicy.WithDevType("vfio-pci").Create()
+			if err != nil {
+				return fmt.Errorf("failed to create Intel sriovnetwork policy %s: %w", vfioPCIName, err)
+			}
+		}
+	case "netdevice":
+		_, err = sriovPolicy.WithDevType("netdevice").Create()
+		if err != nil {
+			return fmt.Errorf("failed to create sriovnetwork policy %s: %w", vfioPCIName, err)
+		}
+	default:
+		return fmt.Errorf("unsupported driver type: %s", reqDriver)
+	}
+
+	glog.V(90).Infof("Waiting until cluster MCP and SR-IOV are stable")
+	err = netenv.WaitForSriovAndMCPStable(
+		APIClient, tsparams.MCOWaitTimeout, time.Minute, NetConfig.CnfMcpLabel, NetConfig.SriovOperatorNamespace)
+	if err != nil {
+		return fmt.Errorf("failed while waiting for cluster to be stable: %w", err)
+	}
+
+	return nil
+}
+
+// DiscoverInterfaceUnderTestDeviceID discovers and returns the device ID for a given SR-IOV interface.
+// Returns the device ID string if found, empty string if not found.
+func DiscoverInterfaceUnderTestDeviceID(srIovInterfaceUnderTest, workerNodeName string) (string, error) {
+	glog.V(90).Infof("Discovering device ID for SR-IOV interface %s on node %s",
+		srIovInterfaceUnderTest, workerNodeName)
+
+	sriovInterfaces, err := sriov.NewNetworkNodeStateBuilder(
+		APIClient, workerNodeName, NetConfig.SriovOperatorNamespace).GetUpNICs()
+	if err != nil {
+		return "", fmt.Errorf("failed to discover device ID for network interface %s: %w",
+			srIovInterfaceUnderTest, err)
+	}
+
+	for _, srIovInterface := range sriovInterfaces {
+		if srIovInterface.Name == srIovInterfaceUnderTest {
+			glog.V(90).Infof("Found device ID %s for interface %s", srIovInterface.DeviceID, srIovInterfaceUnderTest)
+			return srIovInterface.DeviceID, nil
+		}
+	}
+
+	return "", fmt.Errorf("interface %s not found in SR-IOV interfaces list", srIovInterfaceUnderTest)
+}

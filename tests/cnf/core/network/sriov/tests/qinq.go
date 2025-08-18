@@ -114,8 +114,9 @@ var _ = Describe("QinQ", Ordered, Label(tsparams.LabelQinQTestCases), ContinueOn
 		Expect(err).ToNot(HaveOccurred(), "Failed to retrieve SR-IOV interfaces for testing")
 
 		By("Verify SR-IOV Device IDs for interface under test")
-		sriovDeviceID = discoverInterfaceUnderTestDeviceID(srIovInterfacesUnderTest[0],
+		sriovDeviceID, err = sriovenv.DiscoverInterfaceUnderTestDeviceID(srIovInterfacesUnderTest[0],
 			workerNodeList[0].Definition.Name)
+		Expect(err).ToNot(HaveOccurred(), "Failed to discover SR-IOV device ID")
 		Expect(sriovDeviceID).ToNot(BeEmpty(), "Expected sriovDeviceID not to be empty")
 
 		By("Configure lab switch interface to support VLAN double tagging")
@@ -140,9 +141,9 @@ var _ = Describe("QinQ", Ordered, Label(tsparams.LabelQinQTestCases), ContinueOn
 				Skip(fmt.Sprintf("The NIC %s does not support 802.1AD", sriovDeviceID))
 			}
 
-			By("Define and create sriovnetwork Polices")
 			defineCreateSriovNetPolices(srIovPolicyNetDevice, srIovPolicyResNameNetDevice, srIovInterfacesUnderTest[0],
 				sriovDeviceID, "netdevice")
+
 			By("Define and create sriovnetworks")
 			defineAndCreateSriovNetworks(srIovNetworkPromiscuous, srIovNetworkDot1AD, srIovNetworkDot1Q,
 				srIovPolicyResNameNetDevice)
@@ -778,21 +779,6 @@ func defineNetworkAnnotation(sVlan, cVlan string, server bool, cVlan2 ...string)
 	return append(annotation, svlanAnnotation, cvlanAnnotation[0])
 }
 
-func discoverInterfaceUnderTestDeviceID(srIovInterfaceUnderTest, workerNodeName string) string {
-	sriovInterfaces, err := sriov.NewNetworkNodeStateBuilder(
-		APIClient, workerNodeName, NetConfig.SriovOperatorNamespace).GetUpNICs()
-	Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("fail to discover device ID for network interface %s",
-		srIovInterfaceUnderTest))
-
-	for _, srIovInterface := range sriovInterfaces {
-		if srIovInterface.Name == srIovInterfaceUnderTest {
-			return srIovInterface.DeviceID
-		}
-	}
-
-	return ""
-}
-
 func validateTCPTraffic(clientPod *pod.Builder, interfaceName string, destIPAddrs []string) {
 	for _, destIPAddr := range destIPAddrs {
 		command := []string{
@@ -1012,44 +998,6 @@ func defineQinQBondNAD(nadname, mode string) *nad.Builder {
 	return createdNad
 }
 
-func defineCreateSriovNetPolices(vfioPCIName, vfioPCIResName, sriovInterface,
-
-	sriovDeviceID, reqDriver string) {
-	By("Define and create sriov network policy using worker node label with netDevice type vfio-pci")
-
-	sriovPolicy := sriov.NewPolicyBuilder(
-		APIClient,
-		vfioPCIName,
-		NetConfig.SriovOperatorNamespace,
-		vfioPCIResName,
-		5,
-		[]string{fmt.Sprintf("%s#0-4", sriovInterface)},
-		NetConfig.WorkerLabelMap).WithVhostNet(true)
-
-	switch reqDriver {
-	case "vfio-pci":
-		if sriovDeviceID == netparam.MlxDeviceID || sriovDeviceID == netparam.MlxBFDeviceID {
-			_, err := sriovPolicy.WithRDMA(true).WithDevType("netdevice").Create()
-			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Failed to create Mellanox sriovnetwork policy %s",
-				vfioPCIName))
-		} else {
-			_, err := sriovPolicy.WithDevType("vfio-pci").Create()
-			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Failed to create Intel sriovnetwork policy %s",
-				vfioPCIName))
-		}
-	case "netdevice":
-		_, err := sriovPolicy.WithDevType("netdevice").Create()
-		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Failed to create sriovnetwork policy %s",
-			vfioPCIName))
-	}
-
-	By("Waiting until cluster MCP and SR-IOV are stable")
-
-	err := netenv.WaitForSriovAndMCPStable(
-		APIClient, tsparams.MCOWaitTimeout, time.Minute, NetConfig.CnfMcpLabel, NetConfig.SriovOperatorNamespace)
-	Expect(err).ToNot(HaveOccurred(), "Failed cluster is not stable")
-}
-
 func defineAndCreateSriovNetworks(sriovNetworkPromiscName, sriovNetworkDot1ADName, sriovNetworkDot1QName,
 	sriovResName string) {
 	By("Define and create sriov-network for the promiscuous client")
@@ -1141,4 +1089,40 @@ func createSriovPolicyWithExManaged(sriovAndResName, sriovInterfaceName string) 
 	}
 
 	return nil
+}
+
+func defineCreateSriovNetPolices(vfioPCIName, vfioPCIResName, sriovInterface,
+	sriovDeviceID, reqDriver string) {
+	By("Define and create sriov network policy using worker node label with netDevice type vfio-pci")
+
+	sriovPolicy := sriov.NewPolicyBuilder(
+		APIClient,
+		vfioPCIName,
+		NetConfig.SriovOperatorNamespace,
+		vfioPCIResName,
+		5,
+		[]string{fmt.Sprintf("%s#0-4", sriovInterface)},
+		NetConfig.WorkerLabelMap).WithVhostNet(true)
+
+	switch reqDriver {
+	case "vfio-pci":
+		if sriovDeviceID == netparam.MlxDeviceID || sriovDeviceID == netparam.MlxBFDeviceID {
+			_, err := sriovPolicy.WithRDMA(true).WithDevType("netdevice").Create()
+			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Failed to create Mellanox sriovnetwork policy %s",
+				vfioPCIName))
+		} else {
+			_, err := sriovPolicy.WithDevType("vfio-pci").Create()
+			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Failed to create Intel sriovnetwork policy %s",
+				vfioPCIName))
+		}
+	case "netdevice":
+		_, err := sriovPolicy.WithDevType("netdevice").Create()
+		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Failed to create sriovnetwork policy %s",
+			vfioPCIName))
+	}
+
+	By("Waiting until cluster MCP and SR-IOV are stable")
+	err := netenv.WaitForSriovAndMCPStable(
+		APIClient, tsparams.MCOWaitTimeout, time.Minute, NetConfig.CnfMcpLabel, NetConfig.SriovOperatorNamespace)
+	Expect(err).ToNot(HaveOccurred(), "Failed cluster is not stable")
 }
