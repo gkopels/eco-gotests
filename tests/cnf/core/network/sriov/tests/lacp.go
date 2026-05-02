@@ -1672,11 +1672,26 @@ func validateBondedTCPTraffic(clientPod *pod.Builder) {
 	By(fmt.Sprintf("Validating connectivity from %s to %s via interface %s",
 		clientPod.Definition.Name, testClientIP, bondTestInterface))
 
+	containerName := clientPod.Definition.Spec.Containers[0].Name
+
+	// Bonding checks do not guarantee the L2 path to the peer (ARP, MAC learning, STP).
+	// Wait until ICMP succeeds so fast runners (e.g. CI in the lab) are not limited by
+	// incidental delay that often exists when driving the suite from a remote laptop.
+	waitReachable := []string{"bash", "-c",
+		fmt.Sprintf("ping -c 1 -W 3 -I %s %s", bondTestInterface, testClientIP)}
+
+	Eventually(func() error {
+		_, err := clientPod.ExecCommand(waitReachable, containerName)
+
+		return err
+	}, 2*time.Minute, 5*time.Second).Should(Succeed(),
+		fmt.Sprintf("peer %s should become reachable on %s before TCP validation", testClientIP, bondTestInterface))
+
 	// Run ping to capture detailed packet loss stats for debugging (informational only).
 	pingCmd := []string{"bash", "-c",
 		fmt.Sprintf("ping -c 5 -W 2 -I %s %s", bondTestInterface, testClientIP)}
 
-	pingOutput, _ := clientPod.ExecCommand(pingCmd, clientPod.Definition.Spec.Containers[0].Name)
+	pingOutput, _ := clientPod.ExecCommand(pingCmd, containerName)
 	By(fmt.Sprintf("Ping diagnostics from pod %s:\n%s", clientPod.Definition.Name, pingOutput.String()))
 
 	// Run TCP test via testcmd with retry.
@@ -1690,7 +1705,7 @@ func validateBondedTCPTraffic(clientPod *pod.Builder) {
 	}
 
 	Eventually(func() bool {
-		tcpOutput, tcpErr := clientPod.ExecCommand(tcpCmd, clientPod.Definition.Spec.Containers[0].Name)
+		tcpOutput, tcpErr := clientPod.ExecCommand(tcpCmd, containerName)
 		By(fmt.Sprintf("TCP testcmd output from pod %s:\n%s", clientPod.Definition.Name, tcpOutput.String()))
 
 		if tcpErr != nil {
